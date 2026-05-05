@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
-import { Loader2, Building2 } from "lucide-react";
+import { Loader2, Building2, Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ export default function Auth() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
 
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -35,6 +36,7 @@ export default function Auth() {
   const [signupName, setSignupName] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
   const [signupPassword, setSignupPassword] = useState("");
+  const [signupPasswordConfirm, setSignupPasswordConfirm] = useState("");
 
   useEffect(() => {
     if (!authLoading && user) navigate("/", { replace: true });
@@ -74,6 +76,10 @@ export default function Auth() {
       nameSchema.parse(signupName);
       emailSchema.parse(signupEmail);
       passwordSchema.parse(signupPassword);
+      if (signupPassword !== signupPasswordConfirm) {
+        toast.error("As senhas nao coincidem");
+        return;
+      }
     } catch (error) {
       if (error instanceof z.ZodError) {
         toast.error(error.errors[0].message);
@@ -160,13 +166,26 @@ export default function Auth() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="login-password">Senha</Label>
-                    <Input
-                      id="login-password"
-                      type="password"
-                      value={loginPassword}
-                      onChange={(event) => setLoginPassword(event.target.value)}
-                      required
-                    />
+                    <div className="relative">
+                      <Input
+                        id="login-password"
+                        type={showLoginPassword ? "text" : "password"}
+                        value={loginPassword}
+                        onChange={(event) => setLoginPassword(event.target.value)}
+                        className="pr-10"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowLoginPassword((current) => !current)}
+                        className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-r-md"
+                        aria-label={showLoginPassword ? "Ocultar senha" : "Mostrar senha"}
+                        aria-pressed={showLoginPassword}
+                      >
+                        {showLoginPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        <span className="sr-only">{showLoginPassword ? "Ocultar senha" : "Mostrar senha"}</span>
+                      </button>
+                    </div>
                   </div>
                   <Button type="submit" variant="accent" className="w-full font-semibold" disabled={loading}>
                     {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -206,6 +225,16 @@ export default function Auth() {
                       required
                     />
                     <p className="text-xs text-muted-foreground">Minimo 6 caracteres</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-password-confirm">Confirmar senha</Label>
+                    <Input
+                      id="signup-password-confirm"
+                      type="password"
+                      value={signupPasswordConfirm}
+                      onChange={(event) => setSignupPasswordConfirm(event.target.value)}
+                      required
+                    />
                   </div>
                   <Button type="submit" variant="accent" className="w-full font-semibold" disabled={loading}>
                     {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
