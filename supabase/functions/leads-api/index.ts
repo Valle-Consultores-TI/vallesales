@@ -31,10 +31,22 @@ type AppRole = "admin" | "gestor" | "consultor" | "visualizador";
 type UserAccessStatus = "pending" | "active" | "suspended" | "inactive";
 
 type LeadPayload = Record<string, unknown>;
+type AdditionalContactPayload = {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+};
+
 type LeadRow = Record<string, unknown> & {
+  additional_contacts?: AdditionalContactPayload[] | null;
   created_by?: string | null;
   next_follow_up?: Date | string | null;
   owner_id?: string | null;
+  phone?: string | null;
+  contact_name?: string | null;
+  company_or_person?: string | null;
+  stage_id?: string | null;
 };
 
 const allowedLeadFields = new Set([
@@ -44,6 +56,7 @@ const allowedLeadFields = new Set([
   "email",
   "source",
   "segment",
+  "segment_other",
   "city",
   "uf",
   "owner_id",
@@ -54,6 +67,10 @@ const allowedLeadFields = new Set([
   "contact_method",
   "next_follow_up",
   "notes",
+  "additional_contacts",
+  "tax_regime",
+  "service_types",
+  "service_details",
   "position",
 ]);
 
@@ -71,6 +88,143 @@ const cleanLeadPayload = (payload: LeadPayload = {}) => {
     if (allowedLeadFields.has(key) && value !== undefined) cleaned[key] = value;
   }
   return cleaned;
+};
+
+const normalizeOptionalString = (value: unknown) => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+};
+
+const normalizePhone = (value: unknown) => {
+  const raw = normalizeOptionalString(value);
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return null;
+  if (digits.length <= 2) return `(${digits}`;
+  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
+};
+
+const countPhoneDigits = (value: string | null | undefined) => (value ?? "").replace(/\D/g, "").length;
+
+const normalizeServiceTypes = (value: unknown) => {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(
+    value
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  ));
+};
+
+const normalizeAdditionalContacts = (value: unknown) => {
+  if (!Array.isArray(value)) return [] as AdditionalContactPayload[];
+  return value
+    .map((item, index) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+      const record = item as Record<string, unknown>;
+      return {
+        id: typeof record.id === "string" && record.id ? record.id : `contact-${index + 1}`,
+        name: normalizeOptionalString(record.name) ?? "",
+        phone: normalizePhone(record.phone) ?? "",
+        email: normalizeOptionalString(record.email) ?? "",
+      };
+    })
+    .filter((item): item is AdditionalContactPayload => item !== null)
+    .filter((item) => item.name || item.phone || item.email);
+};
+
+const prepareLeadPayload = (
+  payload: LeadPayload,
+  current?: LeadRow | null,
+  options?: { enforcePrimaryContact?: boolean },
+) => {
+  const normalized = { ...payload };
+  const enforcePrimaryContact = options?.enforcePrimaryContact ?? !current;
+
+  if (Object.prototype.hasOwnProperty.call(normalized, "company_or_person")) {
+    normalized.company_or_person = normalizeOptionalString(normalized.company_or_person);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "contact_name")) {
+    normalized.contact_name = normalizeOptionalString(normalized.contact_name);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "phone")) {
+    normalized.phone = normalizePhone(normalized.phone);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "email")) {
+    normalized.email = normalizeOptionalString(normalized.email);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "source")) {
+    normalized.source = normalizeOptionalString(normalized.source);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "segment")) {
+    normalized.segment = normalizeOptionalString(normalized.segment);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "segment_other")) {
+    normalized.segment_other = normalizeOptionalString(normalized.segment_other);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "city")) {
+    normalized.city = normalizeOptionalString(normalized.city);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "uf")) {
+    normalized.uf = normalizeOptionalString(normalized.uf);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "owner_id")) {
+    normalized.owner_id = normalizeOptionalString(normalized.owner_id);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "contact_method")) {
+    normalized.contact_method = normalizeOptionalString(normalized.contact_method);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "next_follow_up")) {
+    normalized.next_follow_up = normalizeOptionalString(normalized.next_follow_up);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "notes")) {
+    normalized.notes = normalizeOptionalString(normalized.notes);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "tax_regime")) {
+    normalized.tax_regime = normalizeOptionalString(normalized.tax_regime);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "service_details")) {
+    normalized.service_details = normalizeOptionalString(normalized.service_details);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "additional_contacts")) {
+    normalized.additional_contacts = normalizeAdditionalContacts(normalized.additional_contacts);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "service_types")) {
+    normalized.service_types = normalizeServiceTypes(normalized.service_types);
+  }
+
+  const company = (Object.prototype.hasOwnProperty.call(normalized, "company_or_person")
+    ? normalized.company_or_person
+    : current?.company_or_person) as string | null | undefined;
+  const stageId = (Object.prototype.hasOwnProperty.call(normalized, "stage_id")
+    ? normalized.stage_id
+    : current?.stage_id) as string | null | undefined;
+  const contactName = (Object.prototype.hasOwnProperty.call(normalized, "contact_name")
+    ? normalized.contact_name
+    : current?.contact_name) as string | null | undefined;
+  const phone = (Object.prototype.hasOwnProperty.call(normalized, "phone")
+    ? normalized.phone
+    : current?.phone) as string | null | undefined;
+  const segment = (Object.prototype.hasOwnProperty.call(normalized, "segment")
+    ? normalized.segment
+    : current?.segment) as string | null | undefined;
+
+  if (!company) throw new Response("Empresa/pessoa e obrigatoria.", { status: 400 });
+  if (!stageId) throw new Response("Etapa do funil e obrigatoria.", { status: 400 });
+  if (enforcePrimaryContact && !contactName) {
+    throw new Response("Informe o nome do contato principal.", { status: 400 });
+  }
+  if (enforcePrimaryContact && countPhoneDigits(phone) < 10) {
+    throw new Response("Informe um telefone valido para o contato principal.", { status: 400 });
+  }
+
+  if (segment !== "Outro") {
+    normalized.segment_other = null;
+  }
+
+  return normalized;
 };
 
 const normalizeLead = (lead: LeadRow | null) => {
@@ -246,10 +400,7 @@ serve(async (req) => {
 
     if (action === "create") {
       if (!flags.canCreate) return fail("Sem permissao para criar leads.", 403);
-      const lead = cleanLeadPayload(body.lead);
-      if (!lead.company_or_person || !lead.stage_id) {
-        return fail("Empresa/pessoa e etapa sao obrigatorios.");
-      }
+      const lead = prepareLeadPayload(cleanLeadPayload(body.lead));
       if (flags.isConsultor && !flags.canManageAll && lead.owner_id && lead.owner_id !== userId) {
         return fail("Consultores so podem criar leads proprios ou sem responsavel.", 403);
       }
@@ -257,16 +408,18 @@ serve(async (req) => {
 
       const [created] = await sql`
         insert into public.leads (
-          company_or_person, contact_name, phone, email, source, segment, city, uf,
+          company_or_person, contact_name, phone, email, source, segment, segment_other, city, uf,
           owner_id, estimated_value, temperature, stage_id, has_been_contacted,
-          contact_method, next_follow_up, notes, position, created_by, updated_by
+          contact_method, next_follow_up, notes, additional_contacts, tax_regime,
+          service_types, service_details, position, created_by, updated_by
         ) values (
           ${lead.company_or_person as string}, ${lead.contact_name ?? null}, ${lead.phone ?? null},
-          ${lead.email ?? null}, ${lead.source ?? null}, ${lead.segment ?? null}, ${lead.city ?? null},
-          ${lead.uf ?? null}, ${lead.owner_id ?? null}, ${lead.estimated_value ?? 0},
+          ${lead.email ?? null}, ${lead.source ?? null}, ${lead.segment ?? null}, ${lead.segment_other ?? null},
+          ${lead.city ?? null}, ${lead.uf ?? null}, ${lead.owner_id ?? null}, ${lead.estimated_value ?? 0},
           ${lead.temperature ?? "morno"}, ${lead.stage_id as string}, ${lead.has_been_contacted ?? false},
           ${lead.contact_method ?? null}, ${lead.next_follow_up ?? null}, ${lead.notes ?? null},
-          ${lead.position ?? 0}, ${userId}, ${userId}
+          ${lead.additional_contacts ?? []}, ${lead.tax_regime ?? null}, ${lead.service_types ?? []},
+          ${lead.service_details ?? null}, ${lead.position ?? 0}, ${userId}, ${userId}
         )
         returning *
       `;
@@ -281,7 +434,21 @@ serve(async (req) => {
       if (!current) return fail("Lead nao encontrado.", 404);
       if (!canAccessLead(current, userId, roles)) return fail("Sem permissao para alterar este lead.", 403);
 
-      const updates = cleanLeadPayload(body.updates);
+      const rawUpdates = cleanLeadPayload(body.updates);
+      const shouldEnforcePrimaryContact =
+        Object.prototype.hasOwnProperty.call(rawUpdates, "contact_name") ||
+        Object.prototype.hasOwnProperty.call(rawUpdates, "phone") ||
+        Object.prototype.hasOwnProperty.call(rawUpdates, "email") ||
+        Object.prototype.hasOwnProperty.call(rawUpdates, "company_or_person") ||
+        Object.prototype.hasOwnProperty.call(rawUpdates, "segment") ||
+        Object.prototype.hasOwnProperty.call(rawUpdates, "segment_other") ||
+        Object.prototype.hasOwnProperty.call(rawUpdates, "tax_regime") ||
+        Object.prototype.hasOwnProperty.call(rawUpdates, "service_types") ||
+        Object.prototype.hasOwnProperty.call(rawUpdates, "service_details") ||
+        Object.prototype.hasOwnProperty.call(rawUpdates, "additional_contacts");
+      const updates = prepareLeadPayload(rawUpdates, current, {
+        enforcePrimaryContact: shouldEnforcePrimaryContact,
+      });
       if (Object.prototype.hasOwnProperty.call(updates, "owner_id")) {
         await assertAssignableOwner(updates.owner_id);
       }

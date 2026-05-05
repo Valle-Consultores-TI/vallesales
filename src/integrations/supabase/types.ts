@@ -148,6 +148,7 @@ export type Database = {
       }
       leads: {
         Row: {
+          additional_contacts: Json
           city: string | null
           company_or_person: string
           contact_method: Database["public"]["Enums"]["contact_method"] | null
@@ -164,14 +165,19 @@ export type Database = {
           phone: string | null
           position: number
           segment: string | null
+          segment_other: string | null
           source: string | null
+          service_details: string | null
+          service_types: string[]
           stage_id: string
+          tax_regime: string | null
           temperature: Database["public"]["Enums"]["lead_temperature"]
           uf: string | null
           updated_at: string
           updated_by: string | null
         }
         Insert: {
+          additional_contacts?: Json
           city?: string | null
           company_or_person: string
           contact_method?: Database["public"]["Enums"]["contact_method"] | null
@@ -188,14 +194,19 @@ export type Database = {
           phone?: string | null
           position?: number
           segment?: string | null
+          segment_other?: string | null
           source?: string | null
+          service_details?: string | null
+          service_types?: string[]
           stage_id: string
+          tax_regime?: string | null
           temperature?: Database["public"]["Enums"]["lead_temperature"]
           uf?: string | null
           updated_at?: string
           updated_by?: string | null
         }
         Update: {
+          additional_contacts?: Json
           city?: string | null
           company_or_person?: string
           contact_method?: Database["public"]["Enums"]["contact_method"] | null
@@ -212,8 +223,12 @@ export type Database = {
           phone?: string | null
           position?: number
           segment?: string | null
+          segment_other?: string | null
           source?: string | null
+          service_details?: string | null
+          service_types?: string[]
           stage_id?: string
+          tax_regime?: string | null
           temperature?: Database["public"]["Enums"]["lead_temperature"]
           uf?: string | null
           updated_at?: string

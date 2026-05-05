@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Card } from "@/components/ui/card";
+import { parseAdditionalContacts } from "@/lib/lead-form";
 
 interface Props {
   lead: Lead | null;
@@ -103,6 +104,7 @@ export const LeadDetailsSheet = ({
   if (!lead) return null;
 
   const stage = stages.find((item) => item.id === lead.stage_id);
+  const additionalContacts = parseAdditionalContacts(lead.additional_contacts);
   const assignableIds = new Set(assignableProfiles.map((profile) => profile.id));
   const ownerOptions = profiles.filter((profile) => assignableIds.has(profile.id) || profile.id === lead.owner_id);
 
@@ -236,7 +238,66 @@ export const LeadDetailsSheet = ({
             )}
             {lead.source && <Info label="Origem" value={lead.source} />}
             {lead.segment && <Info label="Segmento" value={lead.segment} />}
+            {lead.segment === "Outro" && lead.segment_other && (
+              <Info label="Segmento detalhado" value={lead.segment_other} />
+            )}
+            {lead.tax_regime && <Info label="Regime tributario" value={lead.tax_regime} />}
           </div>
+
+          {(lead.contact_name || lead.phone || lead.email) && (
+            <Card className="space-y-3 border-border/70 p-4">
+              <div>
+                <h4 className="text-sm font-semibold text-foreground">Contato principal</h4>
+                <p className="text-xs text-muted-foreground">Dados principais usados no cadastro do lead.</p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-3">
+                {lead.contact_name && <Info label="Nome" value={lead.contact_name} />}
+                {lead.phone && <Info label="Telefone" value={lead.phone} />}
+                {lead.email && <Info label="E-mail" value={lead.email} />}
+              </div>
+            </Card>
+          )}
+
+          {additionalContacts.length > 0 && (
+            <Card className="space-y-3 border-border/70 p-4">
+              <div>
+                <h4 className="text-sm font-semibold text-foreground">Contatos adicionais</h4>
+                <p className="text-xs text-muted-foreground">Outras pessoas relacionadas a este lead.</p>
+              </div>
+              <div className="space-y-3">
+                {additionalContacts.map((contact, index) => (
+                  <div key={contact.id} className="grid grid-cols-1 gap-3 rounded-lg border border-border/60 p-3 md:grid-cols-3">
+                    {contact.name && <Info label={`Nome ${index + 1}`} value={contact.name} />}
+                    {contact.phone && <Info label="Telefone" value={contact.phone} />}
+                    {contact.email && <Info label="E-mail" value={contact.email} />}
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {(lead.service_types.length > 0 || lead.service_details) && (
+            <Card className="space-y-3 border-border/70 p-4">
+              <div>
+                <h4 className="text-sm font-semibold text-foreground">Servico necessario</h4>
+                <p className="text-xs text-muted-foreground">Necessidade comercial registrada no cadastro.</p>
+              </div>
+              {lead.service_types.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {lead.service_types.map((serviceType) => (
+                    <Badge key={serviceType} variant="outline" className="border-border/70 bg-secondary/40">
+                      {serviceType}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              {lead.service_details && (
+                <Card className="border-0 bg-secondary/40 p-3 text-sm whitespace-pre-wrap">
+                  {lead.service_details}
+                </Card>
+              )}
+            </Card>
+          )}
 
           {lead.notes && (
             <Card className="border-0 bg-secondary/40 p-3 text-sm whitespace-pre-wrap">
