@@ -53,11 +53,14 @@ export const useProfiles = (enabled = true) => {
 
 /** Profiles ativos e que podem receber leads — usado em selects de responsável */
 export const useAssignableProfiles = () => {
-  const { data: all, ...rest } = useProfiles();
-  const data = (all ?? []).filter(
-    (p) => p.is_active !== false && p.can_receive_leads !== false
-  );
-  return { ...rest, data };
+  return useQuery({
+    queryKey: ["assignable_profiles"],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("list_assignable_users");
+      if (error) throw error;
+      return (data ?? []) as Profile[];
+    },
+  });
 };
 
 export const useCreateLead = () => {

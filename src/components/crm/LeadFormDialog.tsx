@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { useCreateLead, useProfiles, useStages, useUpdateLead } from "@/hooks/useLeads";
+import { useAssignableProfiles, useCreateLead, useProfiles, useStages, useUpdateLead } from "@/hooks/useLeads";
 import { useAuth } from "@/hooks/useAuth";
 import { Lead } from "@/types/crm";
 import { CONTACT_METHOD_OPTIONS, SOURCE_OPTIONS, TEMPERATURE_OPTIONS, UF_OPTIONS } from "@/lib/constants";
@@ -29,6 +29,7 @@ const tempDot: Record<string, string> = {
 export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Props) => {
   const { data: stages = [] } = useStages();
   const { data: profiles = [] } = useProfiles();
+  const { data: assignableProfiles = [] } = useAssignableProfiles();
   const { user } = useAuth();
   const create = useCreateLead();
   const update = useUpdateLead();
@@ -110,6 +111,8 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
 
   const loading = create.isPending || update.isPending;
   const isEdit = !!lead;
+  const assignableIds = new Set(assignableProfiles.map((profile) => profile.id));
+  const ownerOptions = profiles.filter((profile) => assignableIds.has(profile.id) || profile.id === form.owner_id);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -190,14 +193,9 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">Sem responsável</SelectItem>
-                  {profiles
-                    .filter((p) =>
-                      (p.is_active !== false && p.can_receive_leads !== false) ||
-                      p.id === form.owner_id
-                    )
-                    .map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.full_name || p.email}{p.id === user?.id ? " (eu)" : ""}
+                  {ownerOptions.map((profile) => (
+                      <SelectItem key={profile.id} value={profile.id}>
+                        {profile.full_name || profile.email}{profile.id === user?.id ? " (eu)" : ""}
                       </SelectItem>
                     ))}
                 </SelectContent>

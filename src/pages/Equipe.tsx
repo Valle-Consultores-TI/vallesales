@@ -1,12 +1,21 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate } from "react-router-dom";
-import { Check, Loader2, Pencil, X } from "lucide-react";
+import { Check, Crown, Loader2, Pencil, ShieldCheck, UserRoundCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { usePermissions, ROLE_LABELS, ROLE_OPTIONS, AppRole } from "@/hooks/useUserRoles";
+import {
+  MANAGEABLE_STATUS_OPTIONS,
+  ROLE_LABELS,
+  ROLE_OPTIONS,
+  STATUS_LABELS,
+  OperationalRole,
+  UserAccessStatus,
+  usePermissions,
+} from "@/hooks/useUserRoles";
 import { useProfiles } from "@/hooks/useLeads";
+import { isOwnerEmail } from "@/lib/access";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -14,6 +23,13 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import type { Profile } from "@/types/crm";
+
+const statusTone: Record<UserAccessStatus, string> = {
+  pending: "bg-warning/12 text-warning border-warning/25",
+  active: "bg-success/12 text-success border-success/25",
+  suspended: "bg-destructive/12 text-destructive border-destructive/25",
+  inactive: "bg-muted text-muted-foreground border-border",
+};
 
 export const TeamManagement = () => {
   const { user } = useAuth();
@@ -31,36 +47,75 @@ export const TeamManagement = () => {
     },
   });
 
+  const invalidateUserState = () => {
+    qc.invalidateQueries({ queryKey: ["profiles"] });
+    qc.invalidateQueries({ queryKey: ["user_roles_all"] });
+    qc.invalidateQueries({ queryKey: ["my_roles"] });
+    qc.invalidateQueries({ queryKey: ["my_profile"] });
+    qc.invalidateQueries({ queryKey: ["assignable_profiles"] });
+  };
+
   const updateProfile = useMutation({
-    mutationFn: async (p: { id: string; full_name?: string; is_active?: boolean; can_receive_leads?: boolean }) => {
-      const { id, ...patch } = p;
+    mutationFn: async (payload: { id: string; full_name?: string; can_receive_leads?: boolean }) => {
+      const { id, ...patch } = payload;
       const { error } = await supabase.from("profiles").update(patch).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["profiles"] });
-      toast.success("Atualizado");
+      invalidateUserState();
+      toast.success("Atualizacao salva");
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (error: Error) => toast.error(error.message),
   });
 
   const setRole = useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: AppRole }) => {
+    mutationFn: async ({ userId, role }: { userId: string; role: OperationalRole }) => {
       const { error } = await supabase.rpc("set_user_role", {
         _target_user_id: userId,
         _role: role,
       });
-
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["user_roles_all"] });
-      qc.invalidateQueries({ queryKey: ["my_roles"] });
-      qc.invalidateQueries({ queryKey: ["profiles"] });
-      toast.success("Função atualizada");
+      invalidateUserState();
+      toast.success("Funcao atualizada");
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (error: Error) => toast.error(error.message),
   });
+
+  const setStatus = useMutation({
+    mutationFn: async ({ userId, status }: { userId: string; status: Exclude<UserAccessStatus, "pending"> }) => {
+      const { error } = await supabase.rpc("set_user_status", {
+        _target_user_id: userId,
+        _status: status,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      invalidateUserState();
+      toast.success("Status atualizado");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const rolesByUser = useMemo(() => {
+    const order: Record<OperationalRole, number> = {
+      admin: 1,
+      gestor: 2,
+      consultor: 3,
+      visualizador: 4,
+    };
+    const map = new Map<string, OperationalRole>();
+    (allRoles.data ?? []).forEach((row) => {
+      if (!(row.role in ROLE_LABELS)) return;
+      const role = row.role as OperationalRole;
+      const currentRole = map.get(row.user_id);
+      if (!currentRole || order[role] < order[currentRole]) {
+        map.set(row.user_id, role);
+      }
+    });
+    return map;
+  }, [allRoles.data]);
 
   if (perms.isLoading) {
     return (
@@ -72,29 +127,18 @@ export const TeamManagement = () => {
 
   if (!perms.canManageTeam) return <Navigate to="/configuracoes" replace />;
 
-  const rolesByUser = new Map<string, AppRole>();
-  (allRoles.data ?? []).forEach((r) => {
-    const order: Record<AppRole, number> = {
-      admin: 1,
-      gestor: 2,
-      consultor: 3,
-      visualizador: 4,
-      user: 5,
-    };
-    const currentRole = rolesByUser.get(r.user_id);
-    if (!currentRole || (order[r.role] ?? 99) < (order[currentRole] ?? 99)) {
-      rolesByUser.set(r.user_id, r.role);
-    }
-  });
+  const visibleRoleOptions = perms.isAdmin
+    ? ROLE_OPTIONS
+    : ROLE_OPTIONS.filter((role) => role.value !== "admin");
 
   return (
     <section className="space-y-6">
       <div>
         <h3 className="text-xl font-bold tracking-tight text-foreground md:text-2xl">
-          Gerenciamento de usuários
+          Gerenciamento de usuarios
         </h3>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Gerencie usuários, funções e atribuição de leads
+          Aprove acessos pendentes, gerencie funcoes operacionais e acompanhe o status de cada conta.
         </p>
       </div>
 
@@ -108,30 +152,31 @@ export const TeamManagement = () => {
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40">
                 <tr className="text-left">
-                  <th className="px-4 py-3 font-medium text-muted-foreground">Usuário</th>
-                  <th className="px-4 py-3 font-medium text-muted-foreground">Função</th>
-                  <th className="px-4 py-3 text-center font-medium text-muted-foreground">Ativo</th>
-                  <th className="px-4 py-3 text-center font-medium text-muted-foreground">
-                    Recebe leads
-                  </th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">Usuario</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">Funcao</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">Status</th>
+                  <th className="px-4 py-3 text-center font-medium text-muted-foreground">Recebe leads</th>
                 </tr>
               </thead>
               <tbody>
-                {(profiles.data ?? []).map((profile) => (
-                  <UserRow
-                    key={profile.id}
-                    profile={profile}
-                    role={rolesByUser.get(profile.id) ?? "user"}
-                    isMe={profile.id === user?.id}
-                    isUpdatingRole={setRole.isPending}
-                    onSaveName={(full_name) => updateProfile.mutate({ id: profile.id, full_name })}
-                    onToggleActive={(value) => updateProfile.mutate({ id: profile.id, is_active: value })}
-                    onToggleReceive={(value) =>
-                      updateProfile.mutate({ id: profile.id, can_receive_leads: value })
-                    }
-                    onChangeRole={(role) => setRole.mutate({ userId: profile.id, role })}
-                  />
-                ))}
+                {(profiles.data ?? []).map((profile) => {
+                  const role = rolesByUser.get(profile.id) ?? null;
+                  return (
+                    <UserRow
+                      key={profile.id}
+                      profile={profile}
+                      role={role}
+                      currentUserId={user?.id ?? null}
+                      currentUserIsAdmin={perms.isAdmin}
+                      isBusy={setRole.isPending || setStatus.isPending || updateProfile.isPending}
+                      roleOptions={visibleRoleOptions}
+                      onSaveName={(fullName) => updateProfile.mutate({ id: profile.id, full_name: fullName })}
+                      onToggleReceive={(value) => updateProfile.mutate({ id: profile.id, can_receive_leads: value })}
+                      onChangeRole={(nextRole) => setRole.mutate({ userId: profile.id, role: nextRole })}
+                      onChangeStatus={(nextStatus) => setStatus.mutate({ userId: profile.id, status: nextStatus })}
+                    />
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -155,26 +200,40 @@ export const TeamManagement = () => {
 const UserRow = ({
   profile,
   role,
-  isMe,
-  isUpdatingRole,
+  currentUserId,
+  currentUserIsAdmin,
+  isBusy,
+  roleOptions,
   onSaveName,
-  onToggleActive,
   onToggleReceive,
   onChangeRole,
+  onChangeStatus,
 }: {
   profile: Profile;
-  role: AppRole;
-  isMe: boolean;
-  isUpdatingRole: boolean;
+  role: OperationalRole | null;
+  currentUserId: string | null;
+  currentUserIsAdmin: boolean;
+  isBusy: boolean;
+  roleOptions: typeof ROLE_OPTIONS;
   onSaveName: (name: string) => void;
-  onToggleActive: (value: boolean) => void;
   onToggleReceive: (value: boolean) => void;
-  onChangeRole: (role: AppRole) => void;
+  onChangeRole: (role: OperationalRole) => void;
+  onChangeStatus: (status: Exclude<UserAccessStatus, "pending">) => void;
 }) => {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(profile.full_name ?? "");
-  const isActive = profile.is_active !== false;
+
+  const status = profile.access_status as UserAccessStatus;
+  const isOwner = isOwnerEmail(profile.email);
+  const isSelf = currentUserId === profile.id;
+  const isTargetAdmin = role === "admin";
+  const canManageTarget = !isOwner && !isSelf && (currentUserIsAdmin || !isTargetAdmin);
+  const roleValue = role ?? "__pending__";
   const canReceive = profile.can_receive_leads !== false;
+  const canToggleReceive =
+    canManageTarget &&
+    status === "active" &&
+    (role === "admin" || role === "gestor" || role === "consultor");
 
   return (
     <tr className="border-b hover:bg-muted/20 last:border-0">
@@ -184,7 +243,7 @@ const UserRow = ({
             <div className="flex items-center gap-1">
               <Input
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(event) => setName(event.target.value)}
                 className="h-8 w-44"
                 maxLength={120}
               />
@@ -213,13 +272,19 @@ const UserRow = ({
             </div>
           ) : (
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <p className="truncate font-medium text-foreground">
                   {profile.full_name || profile.email || "Sem nome"}
                 </p>
-                {isMe && (
+                {isOwner && (
+                  <Badge variant="secondary" className="gap-1 text-[10px]">
+                    <Crown className="h-3 w-3" />
+                    Owner
+                  </Badge>
+                )}
+                {isSelf && (
                   <Badge variant="secondary" className="text-[10px]">
-                    você
+                    voce
                   </Badge>
                 )}
                 <Button
@@ -236,35 +301,106 @@ const UserRow = ({
           )}
         </div>
       </td>
+
       <td className="px-4 py-3">
-        <Select
-          value={role}
-          onValueChange={(value) => {
-            const nextRole = value as AppRole;
-            if (nextRole !== role) onChangeRole(nextRole);
-          }}
-          disabled={isUpdatingRole}
-        >
-          <SelectTrigger className="h-8 w-40">
-            <SelectValue>{ROLE_LABELS[role]}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {ROLE_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                <div>
-                  <div className="font-medium">{option.label}</div>
-                  <div className="text-xs text-muted-foreground">{option.description}</div>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="space-y-1">
+          <Select
+            value={roleValue}
+            onValueChange={(value) => {
+              if (value !== "__pending__") onChangeRole(value as OperationalRole);
+            }}
+            disabled={!canManageTarget || isBusy}
+          >
+            <SelectTrigger className="h-8 w-44">
+              <SelectValue>
+                {role ? ROLE_LABELS[role] : "Selecionar funcao"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {!role && (
+                <SelectItem value="__pending__" disabled>
+                  Aguardando aprovacao
+                </SelectItem>
+              )}
+              {roleOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  <div>
+                    <div className="font-medium">{option.label}</div>
+                    <div className="text-xs text-muted-foreground">{option.description}</div>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+            {role ? (
+              <span>{ROLE_LABELS[role]}</span>
+            ) : (
+              <span>Acesso pendente de aprovacao</span>
+            )}
+            {isOwner && (
+              <span className="inline-flex items-center gap-1 text-accent">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Conta principal protegida
+              </span>
+            )}
+          </div>
+        </div>
       </td>
-      <td className="px-4 py-3 text-center">
-        <Switch checked={isActive} onCheckedChange={onToggleActive} />
+
+      <td className="px-4 py-3">
+        <div className="space-y-1">
+          <Badge variant="outline" className={statusTone[status]}>
+            {STATUS_LABELS[status]}
+          </Badge>
+          <Select
+            value={status === "pending" ? "__pending__" : status}
+            onValueChange={(value) => {
+              if (value !== "__pending__") onChangeStatus(value as Exclude<UserAccessStatus, "pending">);
+            }}
+            disabled={!canManageTarget || isBusy}
+          >
+            <SelectTrigger className="h-8 w-44">
+              <SelectValue>
+                {STATUS_LABELS[status]}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {status === "pending" && (
+                <SelectItem value="__pending__" disabled>
+                  Aguardando aprovacao
+                </SelectItem>
+              )}
+              {MANAGEABLE_STATUS_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  <div>
+                    <div className="font-medium">{option.label}</div>
+                    <div className="text-xs text-muted-foreground">{option.description}</div>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </td>
+
       <td className="px-4 py-3 text-center">
-        <Switch checked={canReceive} onCheckedChange={onToggleReceive} disabled={!isActive} />
+        <div className="flex flex-col items-center gap-2">
+          <Switch
+            checked={canReceive}
+            onCheckedChange={onToggleReceive}
+            disabled={!canToggleReceive || isBusy}
+          />
+          <span className="text-xs text-muted-foreground">
+            {canToggleReceive ? "Elegivel" : status === "pending" ? "Pendente" : role === "visualizador" ? "Somente leitura" : "Bloqueado"}
+          </span>
+          {status === "pending" && (
+            <span className="inline-flex items-center gap-1 text-[11px] text-warning">
+              <UserRoundCheck className="h-3 w-3" />
+              Aprovar definindo a funcao
+            </span>
+          )}
+        </div>
       </td>
     </tr>
   );

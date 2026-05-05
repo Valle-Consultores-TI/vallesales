@@ -13,6 +13,7 @@ interface Props {
   profiles: Profile[];
   onClick: () => void;
   onDragStart: (e: React.DragEvent) => void;
+  draggable?: boolean;
 }
 
 const tempStyles: Record<string, string> = {
@@ -39,7 +40,7 @@ function getFollowUpStatus(date: string | null | undefined): FollowUpStatus {
   return "futuro";
 }
 
-export const LeadCard = ({ lead, profiles, onClick, onDragStart }: Props) => {
+export const LeadCard = ({ lead, profiles, onClick, onDragStart, draggable = true }: Props) => {
   const owner = profiles.find((p) => p.id === lead.owner_id);
   const followUpStatus = getFollowUpStatus(lead.next_follow_up);
   const isOverdue = followUpStatus === "atrasado";
@@ -51,13 +52,13 @@ export const LeadCard = ({ lead, profiles, onClick, onDragStart }: Props) => {
 
   return (
     <Card
-      draggable
-      onDragStart={onDragStart}
+      draggable={draggable}
+      onDragStart={draggable ? onDragStart : undefined}
       onClick={onClick}
       className={cn(
         "group relative overflow-hidden p-3 pl-3.5 cursor-pointer bg-card border shadow-xs",
         "hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200",
-        "active:cursor-grabbing active:scale-[0.99]",
+        draggable && "active:cursor-grabbing active:scale-[0.99]",
         // Destaques de atenção (prioridade: atrasado > quente > hoje)
         isOverdue && "border-destructive/40 ring-1 ring-destructive/20 bg-destructive/[0.02]",
         !isOverdue && isHot && "border-temp-quente/45 ring-1 ring-temp-quente/25 shadow-[0_0_0_3px_hsl(var(--temp-quente)/0.08)]",

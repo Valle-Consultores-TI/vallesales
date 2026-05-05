@@ -110,6 +110,12 @@ const Index = () => {
     setDetailsOpen(true);
   };
 
+  const canEditLead = useCallback((lead: Lead) => {
+    if (perms.canEditAnyLead) return true;
+    if (!perms.canEditOwnLead) return false;
+    return lead.owner_id === user?.id || lead.created_by === user?.id;
+  }, [perms.canEditAnyLead, perms.canEditOwnLead, user?.id]);
+
   // Atalho: tecla "N" abre novo lead
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -316,6 +322,8 @@ const Index = () => {
             profiles={profiles.data ?? []}
             onSelectLead={openDetails}
             onAddInStage={(s) => openNew(s)}
+            canAddLead={perms.canCreateLead}
+            canMoveLead={canEditLead}
           />
         )}
       </main>
@@ -333,6 +341,8 @@ const Index = () => {
         onOpenChange={setDetailsOpen}
         profiles={profiles.data ?? []}
         stages={stages.data ?? []}
+        canEditLead={selectedLead ? canEditLead(selectedLead) : false}
+        canDeleteLead={perms.canDeleteLead}
         onEdit={() => {
           if (selectedLead) {
             setDetailsOpen(false);

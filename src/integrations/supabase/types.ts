@@ -267,6 +267,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          access_status: Database["public"]["Enums"]["user_access_status"]
           avatar_url: string | null
           can_receive_leads: boolean
           created_at: string
@@ -277,6 +278,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          access_status?: Database["public"]["Enums"]["user_access_status"]
           avatar_url?: string | null
           can_receive_leads?: boolean
           created_at?: string
@@ -287,6 +289,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          access_status?: Database["public"]["Enums"]["user_access_status"]
           avatar_url?: string | null
           can_receive_leads?: boolean
           created_at?: string
@@ -324,6 +327,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      current_user_can_manage_team: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       current_user_has_any_role: {
         Args: {
           _roles: Database["public"]["Enums"]["app_role"][]
@@ -340,6 +347,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      current_user_status: {
+        Args: Record<PropertyKey, never>
+        Returns: Database["public"]["Enums"]["user_access_status"]
+      }
       has_any_role: {
         Args: {
           _roles: Database["public"]["Enums"]["app_role"][]
@@ -355,6 +366,20 @@ export type Database = {
         Returns: boolean
       }
       is_active_user: { Args: { _user_id: string }; Returns: boolean }
+      list_assignable_users: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          access_status: Database["public"]["Enums"]["user_access_status"]
+          avatar_url: string | null
+          can_receive_leads: boolean
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          is_active: boolean
+          updated_at: string
+        }[]
+      }
       set_user_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -365,6 +390,23 @@ export type Database = {
           id: string
           role: Database["public"]["Enums"]["app_role"]
           user_id: string
+        }
+      }
+      set_user_status: {
+        Args: {
+          _status: Database["public"]["Enums"]["user_access_status"]
+          _target_user_id: string
+        }
+        Returns: {
+          access_status: Database["public"]["Enums"]["user_access_status"]
+          avatar_url: string | null
+          can_receive_leads: boolean
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          is_active: boolean
+          updated_at: string
         }
       }
     }
@@ -378,6 +420,7 @@ export type Database = {
         | "lead_updated"
         | "owner_change"
       app_role: "admin" | "user" | "gestor" | "consultor" | "visualizador"
+      user_access_status: "pending" | "active" | "suspended" | "inactive"
       contact_method:
         | "whatsapp"
         | "ligacao"
@@ -523,6 +566,7 @@ export const Constants = {
         "owner_change",
       ],
       app_role: ["admin", "user", "gestor", "consultor", "visualizador"],
+      user_access_status: ["pending", "active", "suspended", "inactive"],
       contact_method: [
         "whatsapp",
         "ligacao",

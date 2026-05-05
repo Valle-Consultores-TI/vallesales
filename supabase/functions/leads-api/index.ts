@@ -13,7 +13,7 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
 if (!databaseUrl || !supabaseUrl || !serviceRoleKey) {
-  throw new Error("Configuração do backend incompleta.");
+  throw new Error("Configuracao do backend incompleta.");
 }
 
 const sql = postgres(databaseUrl, {
@@ -27,7 +27,8 @@ const authClient = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-type AppRole = "admin" | "gestor" | "consultor" | "visualizador" | "user";
+type AppRole = "admin" | "gestor" | "consultor" | "visualizador";
+type UserAccessStatus = "pending" | "active" | "suspended" | "inactive";
 
 type LeadPayload = Record<string, unknown>;
 type LeadRow = Record<string, unknown> & {
@@ -106,53 +107,84 @@ const canAccessLead = (lead: LeadRow, userId: string, roles: AppRole[]) => {
   return false;
 };
 
+const statusErrorMessage = (status: UserAccessStatus) => {
+  switch (status) {
+    case "pending":
+      return "Seu acesso esta aguardando aprovacao.";
+    case "suspended":
+      return "Seu acesso esta suspenso.";
+    case "inactive":
+      return "Seu acesso esta inativo.";
+    default:
+      return "Sem permissao para acessar o sistema.";
+  }
+};
+
 const getSessionContext = async (req: Request) => {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!token) throw new Response("Sessão não encontrada.", { status: 401 });
+  if (!token) throw new Response("Sessao nao encontrada.", { status: 401 });
 
   const { data, error } = await authClient.auth.getUser(token);
-  if (error || !data.user) throw new Response("Sessão inválida ou expirada.", { status: 401 });
+  if (error || !data.user) throw new Response("Sessao invalida ou expirada.", { status: 401 });
 
   const userId = data.user.id;
   const [profile] = await sql`
-    select is_active
+    select
+      access_status::text as access_status,
+      is_active
     from public.profiles
     where id = ${userId}
     limit 1
   `;
-  if (profile && profile.is_active === false) throw new Response("Usuário inativo.", { status: 403 });
+
+  const accessStatus = (profile?.access_status ?? "pending") as UserAccessStatus;
+  if (accessStatus !== "active" || profile?.is_active === false) {
+    throw new Response(statusErrorMessage(accessStatus), { status: 403 });
+  }
 
   const roleRows = await sql`
     select role::text as role
     from public.user_roles
     where user_id = ${userId}
+      and role in ('admin', 'gestor', 'consultor', 'visualizador')
   `;
-  const roles = (roleRows.length ? roleRows.map((row) => row.role) : ["user"]) as AppRole[];
+  const roles = roleRows.map((row) => row.role as AppRole);
+  if (!roles.length) {
+    throw new Response("Seu acesso operacional ainda nao foi configurado.", { status: 403 });
+  }
+
   return { userId, roles };
 };
 
 const assertAssignableOwner = async (ownerId: unknown) => {
   if (!ownerId) return;
   const [owner] = await sql`
-    select id
-    from public.profiles
-    where id = ${ownerId as string}
-      and is_active = true
-      and can_receive_leads = true
+    select p.id
+    from public.profiles p
+    where p.id = ${ownerId as string}
+      and p.access_status = 'active'
+      and p.is_active = true
+      and p.can_receive_leads = true
+      and exists (
+        select 1
+        from public.user_roles ur
+        where ur.user_id = p.id
+          and ur.role in ('admin', 'gestor', 'consultor')
+      )
     limit 1
   `;
-  if (!owner) throw new Response("Responsável inválido ou inativo.", { status: 400 });
+  if (!owner) throw new Response("Responsavel invalido ou indisponivel.", { status: 400 });
 };
 
 const getOwnerName = async (ownerId: string | null) => {
-  if (!ownerId) return "sem responsável";
+  if (!ownerId) return "sem responsavel";
   const [owner] = await sql`
     select coalesce(full_name, email) as name
     from public.profiles
     where id = ${ownerId}
     limit 1
   `;
-  return owner?.name || "sem responsável";
+  return owner?.name || "sem responsavel";
 };
 
 const getStageName = async (stageId: string | null) => {
@@ -181,7 +213,7 @@ const logActivity = async (
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-  if (req.method !== "POST") return fail("Método não permitido.", 405);
+  if (req.method !== "POST") return fail("Metodo nao permitido.", 405);
 
   try {
     const { userId, roles } = await getSessionContext(req);
@@ -205,19 +237,21 @@ serve(async (req) => {
 
     if (action === "get") {
       const id = body.id as string | undefined;
-      if (!id) return fail("Lead não informado.");
+      if (!id) return fail("Lead nao informado.");
       const [lead] = await sql`select * from public.leads where id = ${id} limit 1`;
-      if (!lead) return fail("Lead não encontrado.", 404);
+      if (!lead) return fail("Lead nao encontrado.", 404);
       if (!canAccessLead(lead, userId, roles)) return fail("Acesso negado ao lead.", 403);
       return json({ lead: normalizeLead(lead) });
     }
 
     if (action === "create") {
-      if (!flags.canCreate) return fail("Sem permissão para criar leads.", 403);
+      if (!flags.canCreate) return fail("Sem permissao para criar leads.", 403);
       const lead = cleanLeadPayload(body.lead);
-      if (!lead.company_or_person || !lead.stage_id) return fail("Empresa/pessoa e etapa são obrigatórios.");
+      if (!lead.company_or_person || !lead.stage_id) {
+        return fail("Empresa/pessoa e etapa sao obrigatorios.");
+      }
       if (flags.isConsultor && !flags.canManageAll && lead.owner_id && lead.owner_id !== userId) {
-        return fail("Consultores só podem criar leads próprios ou sem responsável.", 403);
+        return fail("Consultores so podem criar leads proprios ou sem responsavel.", 403);
       }
       await assertAssignableOwner(lead.owner_id);
 
@@ -242,15 +276,17 @@ serve(async (req) => {
 
     if (action === "update") {
       const id = body.id as string | undefined;
-      if (!id) return fail("Lead não informado.");
+      if (!id) return fail("Lead nao informado.");
       const [current] = await sql`select * from public.leads where id = ${id} limit 1`;
-      if (!current) return fail("Lead não encontrado.", 404);
-      if (!canAccessLead(current, userId, roles)) return fail("Sem permissão para alterar este lead.", 403);
+      if (!current) return fail("Lead nao encontrado.", 404);
+      if (!canAccessLead(current, userId, roles)) return fail("Sem permissao para alterar este lead.", 403);
 
       const updates = cleanLeadPayload(body.updates);
-      if (Object.prototype.hasOwnProperty.call(updates, "owner_id")) await assertAssignableOwner(updates.owner_id);
+      if (Object.prototype.hasOwnProperty.call(updates, "owner_id")) {
+        await assertAssignableOwner(updates.owner_id);
+      }
       if (flags.isConsultor && !flags.canManageAll && updates.owner_id && updates.owner_id !== userId) {
-        return fail("Consultores não podem transferir leads para terceiros.", 403);
+        return fail("Consultores nao podem transferir leads para terceiros.", 403);
       }
 
       updates.updated_by = userId;
@@ -282,7 +318,7 @@ serve(async (req) => {
         await logActivity(
           id,
           "owner_change",
-          `Responsável alterado de "${oldOwner}" para "${newOwner}"`,
+          `Responsavel alterado de "${oldOwner}" para "${newOwner}"`,
           userId,
           { from: current.owner_id, to: updated.owner_id },
         );
@@ -292,14 +328,14 @@ serve(async (req) => {
     }
 
     if (action === "delete") {
-      if (!flags.canManageAll) return fail("Sem permissão para excluir leads.", 403);
+      if (!flags.canManageAll) return fail("Sem permissao para excluir leads.", 403);
       const id = body.id as string | undefined;
-      if (!id) return fail("Lead não informado.");
+      if (!id) return fail("Lead nao informado.");
       await sql`delete from public.leads where id = ${id}`;
       return json({ ok: true });
     }
 
-    return fail("Ação inválida.");
+    return fail("Acao invalida.");
   } catch (error) {
     if (error instanceof Response) {
       const message = await error.text();

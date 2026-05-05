@@ -13,6 +13,8 @@ interface Props {
   profiles: Profile[];
   onSelectLead: (lead: Lead) => void;
   onAddInStage: (stageId: string) => void;
+  canAddLead: boolean;
+  canMoveLead: (lead: Lead) => boolean;
 }
 
 const stageColorBar: Record<string, string> = {
@@ -25,7 +27,15 @@ const stageColorBar: Record<string, string> = {
   perdido: "bg-stage-perdido",
 };
 
-export const KanbanBoard = ({ stages, leads, profiles, onSelectLead, onAddInStage }: Props) => {
+export const KanbanBoard = ({
+  stages,
+  leads,
+  profiles,
+  onSelectLead,
+  onAddInStage,
+  canAddLead,
+  canMoveLead,
+}: Props) => {
   const update = useUpdateLead();
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [overStageId, setOverStageId] = useState<string | null>(null);
@@ -101,6 +111,7 @@ export const KanbanBoard = ({ stages, leads, profiles, onSelectLead, onAddInStag
                   className="h-7 w-7 opacity-0 group-hover:opacity-100 hover:bg-accent/10 hover:text-accent transition-all"
                   onClick={() => onAddInStage(stage.id)}
                   title="Adicionar lead nesta etapa"
+                  disabled={!canAddLead}
                 >
                   <Plus className="h-3.5 w-3.5" />
                 </Button>
@@ -148,6 +159,7 @@ export const KanbanBoard = ({ stages, leads, profiles, onSelectLead, onAddInStag
                     lead={lead}
                     profiles={profiles}
                     onClick={() => onSelectLead(lead)}
+                    draggable={canMoveLead(lead)}
                     onDragStart={(e) => {
                       setDraggedId(lead.id);
                       e.dataTransfer.effectAllowed = "move";
@@ -155,7 +167,7 @@ export const KanbanBoard = ({ stages, leads, profiles, onSelectLead, onAddInStag
                   />
                 </div>
               ))}
-              {stageLeads.length === 0 && (
+              {stageLeads.length === 0 && canAddLead && (
                 <button
                   onClick={() => onAddInStage(stage.id)}
                   className="w-full text-center text-xs text-muted-foreground py-8 px-3 rounded-lg border border-dashed border-border/60 hover:border-accent/50 hover:text-accent hover:bg-accent/5 transition-all"
