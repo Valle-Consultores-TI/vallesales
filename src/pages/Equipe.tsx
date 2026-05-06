@@ -190,6 +190,17 @@ export const TeamManagement = () => {
         </p>
       </div>
 
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {ROLE_OPTIONS.map((role) => (
+          <Card key={role.value} className="p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {role.label}
+            </p>
+            <p className="mt-1 text-sm text-foreground">{role.description}</p>
+          </Card>
+        ))}
+      </div>
+
       {profiles.isLoading || allRoles.isLoading || allFunnelAccess.isLoading || funnels.isLoading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -241,17 +252,6 @@ export const TeamManagement = () => {
           </div>
         </Card>
       )}
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {ROLE_OPTIONS.map((role) => (
-          <Card key={role.value} className="p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {role.label}
-            </p>
-            <p className="mt-1 text-sm text-foreground">{role.description}</p>
-          </Card>
-        ))}
-      </div>
     </section>
   );
 };
