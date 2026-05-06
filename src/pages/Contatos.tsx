@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLeads, useStages } from "@/hooks/useLeads";
+import { useActiveFunnel } from "@/hooks/useActiveFunnel";
 import { parseAdditionalContacts } from "@/lib/lead-form";
 import type { Lead } from "@/types/crm";
 import { Building2, Loader2, Mail, Phone, Search, Users, X } from "lucide-react";
@@ -12,10 +13,13 @@ import { Building2, Loader2, Mail, Phone, Search, Users, X } from "lucide-react"
 type ContactSituation = "open" | "lost" | "won";
 type SituationFilter = "all" | ContactSituation;
 type ContactKind = "primary" | "additional";
+type FunnelView = "active" | "all";
 
 type ContactRow = {
   id: string;
   leadId: string;
+  funnelId: string;
+  funnelName: string;
   contactName: string;
   company: string;
   phone: string | null;
@@ -83,7 +87,12 @@ const getContactIdentity = ({
   return null;
 };
 
-const buildRowsForLead = (lead: Lead, wonStageId?: string, lostStageId?: string): ContactRow[] => {
+const buildRowsForLead = (
+  lead: Lead,
+  funnelName: string,
+  wonStageId?: string,
+  lostStageId?: string,
+): ContactRow[] => {
   const situation = classifySituation(lead, wonStageId, lostStageId);
   const rows: ContactRow[] = [];
   const seen = new Set<string>();
@@ -104,6 +113,8 @@ const buildRowsForLead = (lead: Lead, wonStageId?: string, lostStageId?: string)
   rows.push({
     id: `${lead.id}:primary`,
     leadId: lead.id,
+    funnelId: lead.funnel_id,
+    funnelName,
     contactName: pickPreferred(lead.contact_name, lead.company_or_person, "Sem nome") as string,
     company: pickPreferred(lead.company_or_person, "Sem empresa") as string,
     phone: lead.phone,
@@ -127,6 +138,8 @@ const buildRowsForLead = (lead: Lead, wonStageId?: string, lostStageId?: string)
     rows.push({
       id: `${lead.id}:additional:${contact.id || index}`,
       leadId: lead.id,
+      funnelId: lead.funnel_id,
+      funnelName,
       contactName: pickPreferred(contact.name, lead.company_or_person, "Sem nome") as string,
       company: pickPreferred(lead.company_or_person, "Sem empresa") as string,
       phone: contact.phone || null,
@@ -142,19 +155,38 @@ const buildRowsForLead = (lead: Lead, wonStageId?: string, lostStageId?: string)
 };
 
 const Contacts = () => {
-  const leads = useLeads();
-  const stages = useStages();
+  const { activeFunnel, activeFunnelId, funnels, loading: funnelLoading } = useActiveFunnel();
   const [search, setSearch] = useState("");
   const [situationFilter, setSituationFilter] = useState<SituationFilter>("all");
+  const [funnelView, setFunnelView] = useState<FunnelView>("active");
+  const scopedFunnelId = funnelView === "all" ? null : activeFunnelId;
+  const leads = useLeads(scopedFunnelId, funnelView === "all" || !!activeFunnelId);
+  const stages = useStages(scopedFunnelId, funnelView === "all" || !!activeFunnelId);
 
   const rows = useMemo(() => {
-    const wonStageId = stages.data?.find((stage) => stage.is_won)?.id;
-    const lostStageId = stages.data?.find((stage) => stage.is_lost)?.id;
+    const funnelsById = new Map(funnels.map((funnel) => [funnel.id, funnel.name]));
+    const stageStatusByFunnel = new Map<string, { wonStageId?: string; lostStageId?: string }>();
+
+    (stages.data ?? []).forEach((stage) => {
+      const current = stageStatusByFunnel.get(stage.funnel_id) ?? {};
+      stageStatusByFunnel.set(stage.funnel_id, {
+        wonStageId: stage.is_won ? stage.id : current.wonStageId,
+        lostStageId: stage.is_lost ? stage.id : current.lostStageId,
+      });
+    });
 
     return (leads.data ?? [])
-      .flatMap((lead) => buildRowsForLead(lead, wonStageId, lostStageId))
+      .flatMap((lead) => {
+        const stageStatus = stageStatusByFunnel.get(lead.funnel_id);
+        return buildRowsForLead(
+          lead,
+          funnelsById.get(lead.funnel_id) ?? "Funil nao identificado",
+          stageStatus?.wonStageId,
+          stageStatus?.lostStageId,
+        );
+      })
       .sort((left, right) => compareDatesDesc(left.updatedAt, right.updatedAt));
-  }, [leads.data, stages.data]);
+  }, [funnels, leads.data, stages.data]);
 
   const filteredRows = useMemo(() => {
     const query = normalizeText(search);
@@ -166,6 +198,7 @@ const Contacts = () => {
       const haystack = [
         row.contactName,
         row.company,
+        row.funnelName,
         row.phone,
         row.email,
         situationLabels[row.situation],
@@ -179,9 +212,9 @@ const Contacts = () => {
     });
   }, [rows, search, situationFilter]);
 
-  const loading = leads.isLoading || stages.isLoading;
+  const loading = funnelLoading || leads.isLoading || stages.isLoading;
   const error = (leads.error as Error | null) ?? (stages.error as Error | null);
-  const hasActiveFilters = !!search.trim() || situationFilter !== "all";
+  const hasActiveFilters = !!search.trim() || situationFilter !== "all" || funnelView !== "active";
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -194,7 +227,7 @@ const Contacts = () => {
               Contatos
             </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Lista consolidada dos contatos principais e adicionais vinculados aos negocios do funil.
+              {activeFunnel ? `Contatos vinculados ao negocio ${activeFunnel.name}.` : "Lista consolidada dos contatos dos negocios."}
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -233,6 +266,18 @@ const Contacts = () => {
             )}
           </div>
 
+          <Select value={funnelView} onValueChange={(value) => setFunnelView(value as FunnelView)}>
+            <SelectTrigger className="h-9 bg-background md:w-56">
+              <SelectValue placeholder="Negocio" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">
+                {activeFunnel ? `Somente ${activeFunnel.name}` : "Funil ativo"}
+              </SelectItem>
+              <SelectItem value="all">Todos os funis</SelectItem>
+            </SelectContent>
+          </Select>
+
           <Select value={situationFilter} onValueChange={(value) => setSituationFilter(value as SituationFilter)}>
             <SelectTrigger className="h-9 bg-background md:w-52">
               <SelectValue placeholder="Situacao" />
@@ -258,6 +303,13 @@ const Contacts = () => {
           <div className="flex h-full items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-accent" />
           </div>
+        ) : !activeFunnelId && funnelView === "active" ? (
+          <Card className="mx-auto max-w-2xl p-8 text-center">
+            <h3 className="text-lg font-semibold text-foreground">Nenhum funil disponivel</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Seu usuario nao possui acesso a um funil ativo no momento.
+            </p>
+          </Card>
         ) : error ? (
           <div className="mx-auto flex max-w-md flex-col items-center gap-3 text-center">
             <X className="h-8 w-8 text-destructive" />
@@ -281,6 +333,7 @@ const Contacts = () => {
                   <tr className="text-left">
                     <th className="px-4 py-3 font-medium text-muted-foreground">Nome</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">Tipo</th>
+                    <th className="px-4 py-3 font-medium text-muted-foreground">Negocio</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">Empresa</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">Telefone</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">E-mail</th>
@@ -301,6 +354,7 @@ const Contacts = () => {
                           {contactKindLabels[row.contactKind]}
                         </Badge>
                       </td>
+                      <td className="px-4 py-3 text-foreground">{row.funnelName}</td>
                       <td className="px-4 py-3 text-foreground">{row.company}</td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {row.phone ? (

@@ -41,6 +41,7 @@ type AdditionalContactPayload = {
 type LeadRow = Record<string, unknown> & {
   additional_contacts?: AdditionalContactPayload[] | null;
   created_by?: string | null;
+  funnel_id?: string | null;
   next_follow_up?: Date | string | null;
   owner_id?: string | null;
   phone?: string | null;
@@ -50,6 +51,7 @@ type LeadRow = Record<string, unknown> & {
 };
 
 const allowedLeadFields = new Set([
+  "funnel_id",
   "company_or_person",
   "contact_name",
   "phone",
@@ -173,6 +175,9 @@ const prepareLeadPayload = (
   if (Object.prototype.hasOwnProperty.call(normalized, "owner_id")) {
     normalized.owner_id = normalizeOptionalString(normalized.owner_id);
   }
+  if (Object.prototype.hasOwnProperty.call(normalized, "funnel_id")) {
+    normalized.funnel_id = normalizeOptionalString(normalized.funnel_id);
+  }
   if (Object.prototype.hasOwnProperty.call(normalized, "contact_method")) {
     normalized.contact_method = normalizeOptionalString(normalized.contact_method);
   }
@@ -198,6 +203,9 @@ const prepareLeadPayload = (
   const company = (Object.prototype.hasOwnProperty.call(normalized, "company_or_person")
     ? normalized.company_or_person
     : current?.company_or_person) as string | null | undefined;
+  const funnelId = (Object.prototype.hasOwnProperty.call(normalized, "funnel_id")
+    ? normalized.funnel_id
+    : current?.funnel_id) as string | null | undefined;
   const stageId = (Object.prototype.hasOwnProperty.call(normalized, "stage_id")
     ? normalized.stage_id
     : current?.stage_id) as string | null | undefined;
@@ -212,6 +220,7 @@ const prepareLeadPayload = (
     : current?.segment) as string | null | undefined;
 
   if (!company) throw new Response("Empresa/pessoa e obrigatoria.", { status: 400 });
+  if (!funnelId) throw new Response("Funil/negocio e obrigatorio.", { status: 400 });
   if (!stageId) throw new Response("Etapa do funil e obrigatoria.", { status: 400 });
   if (enforcePrimaryContact && !contactName) {
     throw new Response("Informe o nome do contato principal.", { status: 400 });
@@ -254,10 +263,23 @@ const roleFlags = (roles: AppRole[]) => {
   };
 };
 
-const canAccessLead = (lead: LeadRow, userId: string, roles: AppRole[]) => {
-  const flags = roleFlags(roles);
+type SessionContext = {
+  userId: string;
+  roles: AppRole[];
+  hasAllFunnelAccess: boolean;
+  accessibleFunnelIds: string[];
+};
+
+const userCanAccessFunnel = (ctx: SessionContext, funnelId: string | null | undefined) => {
+  if (!funnelId) return false;
+  return ctx.hasAllFunnelAccess || ctx.accessibleFunnelIds.includes(funnelId);
+};
+
+const canAccessLead = (lead: LeadRow, ctx: SessionContext) => {
+  const flags = roleFlags(ctx.roles);
+  if (!userCanAccessFunnel(ctx, lead.funnel_id)) return false;
   if (flags.canReadAll) return true;
-  if (flags.isConsultor) return lead.owner_id === userId || lead.created_by === userId;
+  if (flags.isConsultor) return lead.owner_id === ctx.userId || lead.created_by === ctx.userId;
   return false;
 };
 
@@ -285,7 +307,8 @@ const getSessionContext = async (req: Request) => {
   const [profile] = await sql`
     select
       access_status::text as access_status,
-      is_active
+      is_active,
+      has_all_funnel_access
     from public.profiles
     where id = ${userId}
     limit 1
@@ -307,10 +330,25 @@ const getSessionContext = async (req: Request) => {
     throw new Response("Seu acesso operacional ainda nao foi configurado.", { status: 403 });
   }
 
-  return { userId, roles };
+  const hasAllFunnelAccess = profile?.has_all_funnel_access !== false;
+  const accessibleFunnelIds = hasAllFunnelAccess
+    ? []
+    : (await sql`
+        select funnel_id::text as funnel_id
+        from public.user_funnel_access
+        where user_id = ${userId}
+      `).map((row) => row.funnel_id as string);
+
+  return { userId, roles, hasAllFunnelAccess, accessibleFunnelIds };
 };
 
-const assertAssignableOwner = async (ownerId: unknown) => {
+const assertFunnelAccess = (ctx: SessionContext, funnelId: string | null | undefined) => {
+  if (!userCanAccessFunnel(ctx, funnelId)) {
+    throw new Response("Sem permissao para acessar este funil.", { status: 403 });
+  }
+};
+
+const assertAssignableOwner = async (ownerId: unknown, funnelId: string) => {
   if (!ownerId) return;
   const [owner] = await sql`
     select p.id
@@ -325,9 +363,28 @@ const assertAssignableOwner = async (ownerId: unknown) => {
         where ur.user_id = p.id
           and ur.role in ('admin', 'gestor', 'consultor')
       )
+      and public.user_has_funnel_access(p.id, ${funnelId})
     limit 1
   `;
   if (!owner) throw new Response("Responsavel invalido ou indisponivel.", { status: 400 });
+};
+
+const assertStageBelongsToFunnel = async (stageId: unknown, funnelId: unknown) => {
+  if (!stageId || !funnelId) {
+    throw new Response("Funil e etapa do funil sao obrigatorios.", { status: 400 });
+  }
+
+  const [stage] = await sql`
+    select id
+    from public.pipeline_stages
+    where id = ${stageId as string}
+      and funnel_id = ${funnelId as string}
+    limit 1
+  `;
+
+  if (!stage) {
+    throw new Response("A etapa selecionada nao pertence ao funil informado.", { status: 400 });
+  }
 };
 
 const getOwnerName = async (ownerId: string | null) => {
@@ -370,12 +427,18 @@ serve(async (req) => {
   if (req.method !== "POST") return fail("Metodo nao permitido.", 405);
 
   try {
-    const { userId, roles } = await getSessionContext(req);
+    const session = await getSessionContext(req);
+    const { userId, roles } = session;
     const flags = roleFlags(roles);
     const body = await req.json().catch(() => ({}));
     const action = body.action || "list";
+    const requestedFunnelId = normalizeOptionalString(body.funnel_id);
 
     if (action === "list") {
+      if (requestedFunnelId) {
+        assertFunnelAccess(session, requestedFunnelId);
+      }
+
       const rows = flags.canReadAll
         ? await sql`select * from public.leads order by position asc, created_at desc`
         : flags.isConsultor
@@ -386,7 +449,12 @@ serve(async (req) => {
               order by position asc, created_at desc
             `
           : [];
-      return json({ leads: rows.map(normalizeLead) });
+      const filtered = rows.filter((lead) => {
+        if (!canAccessLead(lead, session)) return false;
+        if (requestedFunnelId && lead.funnel_id !== requestedFunnelId) return false;
+        return true;
+      });
+      return json({ leads: filtered.map(normalizeLead) });
     }
 
     if (action === "get") {
@@ -394,26 +462,28 @@ serve(async (req) => {
       if (!id) return fail("Lead nao informado.");
       const [lead] = await sql`select * from public.leads where id = ${id} limit 1`;
       if (!lead) return fail("Lead nao encontrado.", 404);
-      if (!canAccessLead(lead, userId, roles)) return fail("Acesso negado ao lead.", 403);
+      if (!canAccessLead(lead, session)) return fail("Acesso negado ao lead.", 403);
       return json({ lead: normalizeLead(lead) });
     }
 
     if (action === "create") {
       if (!flags.canCreate) return fail("Sem permissao para criar leads.", 403);
       const lead = prepareLeadPayload(cleanLeadPayload(body.lead));
+      assertFunnelAccess(session, lead.funnel_id as string | null | undefined);
+      await assertStageBelongsToFunnel(lead.stage_id, lead.funnel_id);
       if (flags.isConsultor && !flags.canManageAll && lead.owner_id && lead.owner_id !== userId) {
         return fail("Consultores so podem criar leads proprios ou sem responsavel.", 403);
       }
-      await assertAssignableOwner(lead.owner_id);
+      await assertAssignableOwner(lead.owner_id, lead.funnel_id as string);
 
       const [created] = await sql`
         insert into public.leads (
-          company_or_person, contact_name, phone, email, source, segment, segment_other, city, uf,
+          funnel_id, company_or_person, contact_name, phone, email, source, segment, segment_other, city, uf,
           owner_id, estimated_value, temperature, stage_id, has_been_contacted,
           contact_method, next_follow_up, notes, additional_contacts, tax_regime,
           service_types, service_details, position, created_by, updated_by
         ) values (
-          ${lead.company_or_person as string}, ${lead.contact_name ?? null}, ${lead.phone ?? null},
+          ${lead.funnel_id as string}, ${lead.company_or_person as string}, ${lead.contact_name ?? null}, ${lead.phone ?? null},
           ${lead.email ?? null}, ${lead.source ?? null}, ${lead.segment ?? null}, ${lead.segment_other ?? null},
           ${lead.city ?? null}, ${lead.uf ?? null}, ${lead.owner_id ?? null}, ${lead.estimated_value ?? 0},
           ${lead.temperature ?? "morno"}, ${lead.stage_id as string}, ${lead.has_been_contacted ?? false},
@@ -432,7 +502,7 @@ serve(async (req) => {
       if (!id) return fail("Lead nao informado.");
       const [current] = await sql`select * from public.leads where id = ${id} limit 1`;
       if (!current) return fail("Lead nao encontrado.", 404);
-      if (!canAccessLead(current, userId, roles)) return fail("Sem permissao para alterar este lead.", 403);
+      if (!canAccessLead(current, session)) return fail("Sem permissao para alterar este lead.", 403);
 
       const rawUpdates = cleanLeadPayload(body.updates);
       const shouldEnforcePrimaryContact =
@@ -449,8 +519,11 @@ serve(async (req) => {
       const updates = prepareLeadPayload(rawUpdates, current, {
         enforcePrimaryContact: shouldEnforcePrimaryContact,
       });
+      const targetFunnelId = (updates.funnel_id ?? current.funnel_id) as string | null | undefined;
+      assertFunnelAccess(session, targetFunnelId);
+      await assertStageBelongsToFunnel(updates.stage_id ?? current.stage_id, targetFunnelId);
       if (Object.prototype.hasOwnProperty.call(updates, "owner_id")) {
-        await assertAssignableOwner(updates.owner_id);
+        await assertAssignableOwner(updates.owner_id, targetFunnelId as string);
       }
       if (flags.isConsultor && !flags.canManageAll && updates.owner_id && updates.owner_id !== userId) {
         return fail("Consultores nao podem transferir leads para terceiros.", 403);
@@ -498,6 +571,9 @@ serve(async (req) => {
       if (!flags.canManageAll) return fail("Sem permissao para excluir leads.", 403);
       const id = body.id as string | undefined;
       if (!id) return fail("Lead nao informado.");
+      const [lead] = await sql`select * from public.leads where id = ${id} limit 1`;
+      if (!lead) return fail("Lead nao encontrado.", 404);
+      if (!canAccessLead(lead, session)) return fail("Sem permissao para excluir este lead.", 403);
       await sql`delete from public.leads where id = ${id}`;
       return json({ ok: true });
     }

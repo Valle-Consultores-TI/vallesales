@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAssignableProfiles, useCreateLead, useProfiles, useStages, useUpdateLead } from "@/hooks/useLeads";
+import { useActiveFunnel } from "@/hooks/useActiveFunnel";
 import { useAuth } from "@/hooks/useAuth";
 import { Lead } from "@/types/crm";
 import { CONTACT_METHOD_OPTIONS, SOURCE_OPTIONS, TEMPERATURE_OPTIONS, UF_OPTIONS } from "@/lib/constants";
@@ -32,6 +33,7 @@ interface Props {
 }
 
 type FormState = {
+  funnel_id: string;
   company_or_person: string;
   contact_name: string;
   phone: string;
@@ -55,7 +57,7 @@ type FormState = {
   service_details: string;
 };
 
-type FormErrors = Partial<Record<"company_or_person" | "contact_name" | "phone" | "stage_id", string>>;
+type FormErrors = Partial<Record<"funnel_id" | "company_or_person" | "contact_name" | "phone" | "stage_id", string>>;
 
 const tempDot: Record<string, string> = {
   frio: "bg-temp-frio",
@@ -85,10 +87,16 @@ const normalizeSegmentState = (lead: Lead | null | undefined) => {
   };
 };
 
-const buildInitialForm = (lead: Lead | null | undefined, defaultStageId: string | undefined, firstStageId?: string): FormState => {
+const buildInitialForm = (
+  lead: Lead | null | undefined,
+  defaultStageId: string | undefined,
+  activeFunnelId?: string | null,
+  firstStageId?: string,
+): FormState => {
   const segmentState = normalizeSegmentState(lead);
 
   return {
+    funnel_id: lead?.funnel_id ?? activeFunnelId ?? "",
     company_or_person: lead?.company_or_person ?? "",
     contact_name: lead?.contact_name ?? "",
     phone: lead?.phone ?? "",
@@ -121,23 +129,33 @@ const createEmptyAdditionalContact = (): LeadAdditionalContact => ({
 });
 
 export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Props) => {
-  const { data: stages = [] } = useStages();
+  const { activeFunnelId, funnels } = useActiveFunnel();
   const { data: profiles = [] } = useProfiles();
-  const { data: assignableProfiles = [] } = useAssignableProfiles();
+  const [form, setForm] = useState<FormState>(() => buildInitialForm(lead, defaultStageId, activeFunnelId));
+  const { data: stages = [] } = useStages(form.funnel_id || undefined, !!form.funnel_id);
+  const { data: assignableProfiles = [] } = useAssignableProfiles(form.funnel_id || undefined, !!form.funnel_id);
   const { user } = useAuth();
   const create = useCreateLead();
   const update = useUpdateLead();
   const firstFieldRef = useRef<HTMLInputElement>(null);
 
-  const [form, setForm] = useState<FormState>(() => buildInitialForm(lead, defaultStageId));
   const [errors, setErrors] = useState<FormErrors>({});
 
   useEffect(() => {
     if (!open) return;
-    setForm(buildInitialForm(lead, defaultStageId, stages[0]?.id));
+    setForm(buildInitialForm(lead, defaultStageId, activeFunnelId));
     setErrors({});
     setTimeout(() => firstFieldRef.current?.focus(), 50);
-  }, [lead, open, defaultStageId, stages]);
+  }, [activeFunnelId, defaultStageId, lead, open]);
+
+  useEffect(() => {
+    if (!open || !form.funnel_id || stages.length === 0) return;
+    const stageStillValid = stages.some((stage) => stage.id === form.stage_id);
+    if (!stageStillValid) {
+      const nextStageId = stages.find((stage) => stage.id === defaultStageId)?.id ?? stages[0]?.id ?? "";
+      setForm((current) => ({ ...current, stage_id: nextStageId }));
+    }
+  }, [defaultStageId, form.funnel_id, form.stage_id, open, stages]);
 
   const loading = create.isPending || update.isPending;
   const isEdit = !!lead;
@@ -177,6 +195,9 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
     if (!form.company_or_person.trim()) {
       nextErrors.company_or_person = "Informe a empresa ou pessoa.";
     }
+    if (!form.funnel_id) {
+      nextErrors.funnel_id = "Selecione o negocio/funil.";
+    }
     if (!form.stage_id) {
       nextErrors.stage_id = "Selecione a etapa do funil.";
     }
@@ -196,6 +217,7 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
     if (!validateForm()) return;
 
     const payload = {
+      funnel_id: form.funnel_id,
       company_or_person: form.company_or_person.trim(),
       contact_name: form.contact_name.trim(),
       phone: formatPhone(form.phone),
@@ -258,6 +280,29 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
                   required
                   autoComplete="off"
                 />
+              </FieldBlock>
+
+              <FieldBlock error={errors.funnel_id}>
+                <Label>Negocio / funil *</Label>
+                <Select
+                  value={form.funnel_id}
+                  onValueChange={(value) => {
+                    patchForm({ funnel_id: value, owner_id: "" });
+                    clearError("funnel_id");
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {funnels.map((funnel) => (
+                      <SelectItem key={funnel.id} value={funnel.id}>
+                        {funnel.name}
+                        {funnel.is_default ? " (principal)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </FieldBlock>
 
               <FieldBlock error={errors.stage_id}>

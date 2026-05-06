@@ -18,22 +18,33 @@ const invokeLeadsApi = async <T>(body: Record<string, unknown>): Promise<T> => {
   return data as T;
 };
 
-export const useStages = () => {
+const ALL_FUNNELS_KEY = "__all__";
+
+export const useStages = (funnelId?: string | null, enabled = true) => {
   return useQuery({
-    queryKey: ["pipeline_stages"],
+    queryKey: ["pipeline_stages", funnelId ?? ALL_FUNNELS_KEY],
+    enabled,
     queryFn: async () => {
-      const { data, error } = await supabase.from("pipeline_stages").select("*").order("position");
+      let query = supabase.from("pipeline_stages").select("*");
+      if (funnelId) {
+        query = query.eq("funnel_id", funnelId);
+      }
+      const { data, error } = await query.order("position");
       if (error) throw error;
       return data as PipelineStage[];
     },
   });
 };
 
-export const useLeads = () => {
+export const useLeads = (funnelId?: string | null, enabled = true) => {
   return useQuery({
-    queryKey: ["leads"],
+    queryKey: ["leads", funnelId ?? ALL_FUNNELS_KEY],
+    enabled,
     queryFn: async () => {
-      const data = await invokeLeadsApi<{ leads: Lead[] }>({ action: "list" });
+      const data = await invokeLeadsApi<{ leads: Lead[] }>({
+        action: "list",
+        funnel_id: funnelId ?? null,
+      });
       return data.leads;
     },
   });
@@ -52,11 +63,14 @@ export const useProfiles = (enabled = true) => {
 };
 
 /** Profiles ativos e que podem receber leads — usado em selects de responsável */
-export const useAssignableProfiles = () => {
+export const useAssignableProfiles = (funnelId?: string | null, enabled = true) => {
   return useQuery({
-    queryKey: ["assignable_profiles"],
+    queryKey: ["assignable_profiles", funnelId ?? ALL_FUNNELS_KEY],
+    enabled,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("list_assignable_users");
+      const { data, error } = funnelId
+        ? await supabase.rpc("list_assignable_users", { _funnel_id: funnelId })
+        : await supabase.rpc("list_assignable_users");
       if (error) throw error;
       return (data ?? []) as Profile[];
     },

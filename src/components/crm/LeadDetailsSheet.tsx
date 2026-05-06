@@ -17,6 +17,7 @@ import {
   useUploadAttachment,
   downloadAttachment,
 } from "@/hooks/useLeads";
+import { useActiveFunnel } from "@/hooks/useActiveFunnel";
 import { useAuth } from "@/hooks/useAuth";
 import type { Lead, PipelineStage, Profile } from "@/types/crm";
 import { CONTACT_METHOD_OPTIONS, formatCurrency, formatDate, formatDateTime } from "@/lib/constants";
@@ -98,12 +99,14 @@ export const LeadDetailsSheet = ({
   const upload = useUploadAttachment(lead?.id ?? "");
   const del = useDeleteLead();
   const updateLead = useUpdateLead();
-  const { data: assignableProfiles = [] } = useAssignableProfiles();
+  const { data: assignableProfiles = [] } = useAssignableProfiles(lead?.funnel_id, !!lead?.funnel_id);
+  const { funnels } = useActiveFunnel();
   const { user } = useAuth();
 
   if (!lead) return null;
 
   const stage = stages.find((item) => item.id === lead.stage_id);
+  const funnel = funnels.find((item) => item.id === lead.funnel_id);
   const additionalContacts = parseAdditionalContacts(lead.additional_contacts);
   const assignableIds = new Set(assignableProfiles.map((profile) => profile.id));
   const ownerOptions = profiles.filter((profile) => assignableIds.has(profile.id) || profile.id === lead.owner_id);
@@ -194,6 +197,7 @@ export const LeadDetailsSheet = ({
                 value={[lead.city, lead.uf].filter(Boolean).join(" / ")}
               />
             )}
+            {funnel && <Info label="Negocio" value={funnel.name} />}
 
             <div className="col-span-2 space-y-1">
               <p className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-muted-foreground">

@@ -157,6 +157,7 @@ export type Database = {
           created_by: string | null
           email: string | null
           estimated_value: number | null
+          funnel_id: string
           has_been_contacted: boolean
           id: string
           next_follow_up: string | null
@@ -186,6 +187,7 @@ export type Database = {
           created_by?: string | null
           email?: string | null
           estimated_value?: number | null
+          funnel_id: string
           has_been_contacted?: boolean
           id?: string
           next_follow_up?: string | null
@@ -215,6 +217,7 @@ export type Database = {
           created_by?: string | null
           email?: string | null
           estimated_value?: number | null
+          funnel_id?: string
           has_been_contacted?: boolean
           id?: string
           next_follow_up?: string | null
@@ -236,6 +239,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "leads_funnel_id_fkey"
+            columns: ["funnel_id"]
+            isOneToOne: false
+            referencedRelation: "funnels"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "leads_stage_id_fkey"
             columns: ["stage_id"]
             isOneToOne: false
@@ -244,10 +254,35 @@ export type Database = {
           },
         ]
       }
+      funnels: {
+        Row: {
+          created_at: string
+          id: string
+          is_default: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       pipeline_stages: {
         Row: {
           color: string | null
           created_at: string
+          funnel_id: string
           id: string
           is_lost: boolean
           is_won: boolean
@@ -259,6 +294,7 @@ export type Database = {
         Insert: {
           color?: string | null
           created_at?: string
+          funnel_id: string
           id?: string
           is_lost?: boolean
           is_won?: boolean
@@ -270,6 +306,7 @@ export type Database = {
         Update: {
           color?: string | null
           created_at?: string
+          funnel_id?: string
           id?: string
           is_lost?: boolean
           is_won?: boolean
@@ -278,7 +315,15 @@ export type Database = {
           position?: number
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_stages_funnel_id_fkey"
+            columns: ["funnel_id"]
+            isOneToOne: false
+            referencedRelation: "funnels"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -288,6 +333,7 @@ export type Database = {
           created_at: string
           email: string | null
           full_name: string | null
+          has_all_funnel_access: boolean
           id: string
           is_active: boolean
           updated_at: string
@@ -299,6 +345,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           full_name?: string | null
+          has_all_funnel_access?: boolean
           id: string
           is_active?: boolean
           updated_at?: string
@@ -310,11 +357,41 @@ export type Database = {
           created_at?: string
           email?: string | null
           full_name?: string | null
+          has_all_funnel_access?: boolean
           id?: string
           is_active?: boolean
           updated_at?: string
         }
         Relationships: []
+      }
+      user_funnel_access: {
+        Row: {
+          created_at: string
+          funnel_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          funnel_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          funnel_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_funnel_access_funnel_id_fkey"
+            columns: ["funnel_id"]
+            isOneToOne: false
+            referencedRelation: "funnels"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -346,6 +423,18 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      current_user_can_access_lead: {
+        Args: {
+          _lead_id: string
+        }
+        Returns: boolean
+      }
+      current_user_has_funnel_access: {
+        Args: {
+          _funnel_id: string
+        }
+        Returns: boolean
+      }
       current_user_has_any_role: {
         Args: {
           _roles: Database["public"]["Enums"]["app_role"][]
@@ -366,6 +455,18 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Database["public"]["Enums"]["user_access_status"]
       }
+      create_funnel: {
+        Args: {
+          _name: string
+        }
+        Returns: {
+          created_at: string
+          id: string
+          is_default: boolean
+          name: string
+          updated_at: string
+        }
+      }
       has_any_role: {
         Args: {
           _roles: Database["public"]["Enums"]["app_role"][]
@@ -382,7 +483,9 @@ export type Database = {
       }
       is_active_user: { Args: { _user_id: string }; Returns: boolean }
       list_assignable_users: {
-        Args: Record<PropertyKey, never>
+        Args: {
+          _funnel_id?: string
+        }
         Returns: {
           access_status: Database["public"]["Enums"]["user_access_status"]
           avatar_url: string | null
@@ -390,8 +493,20 @@ export type Database = {
           created_at: string
           email: string | null
           full_name: string | null
+          has_all_funnel_access: boolean
           id: string
           is_active: boolean
+          updated_at: string
+        }[]
+      }
+      list_funnels_with_access: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          created_at: string
+          has_access: boolean
+          id: string
+          is_default: boolean
+          name: string
           updated_at: string
         }[]
       }
@@ -423,6 +538,32 @@ export type Database = {
           is_active: boolean
           updated_at: string
         }
+      }
+      set_user_funnel_scope: {
+        Args: {
+          _funnel_id?: string
+          _has_all_funnel_access: boolean
+          _target_user_id: string
+        }
+        Returns: {
+          access_status: Database["public"]["Enums"]["user_access_status"]
+          avatar_url: string | null
+          can_receive_leads: boolean
+          created_at: string
+          email: string | null
+          full_name: string | null
+          has_all_funnel_access: boolean
+          id: string
+          is_active: boolean
+          updated_at: string
+        }
+      }
+      user_has_funnel_access: {
+        Args: {
+          _funnel_id: string
+          _user_id: string
+        }
+        Returns: boolean
       }
     }
     Enums: {

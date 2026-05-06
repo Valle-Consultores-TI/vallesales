@@ -14,7 +14,10 @@ type SettingsSection = "theme" | "team";
 const Configuracoes = () => {
   const location = useLocation();
   const perms = usePermissions();
-  const section: SettingsSection = location.pathname === "/configuracoes/equipe" ? "team" : "theme";
+  const section: SettingsSection =
+    location.pathname === "/configuracoes/equipe"
+      ? "team"
+      : "theme";
 
   if (section === "team" && !perms.isLoading && !perms.canManageTeam) {
     return <Navigate to="/configuracoes" replace />;

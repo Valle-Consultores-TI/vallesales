@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useStages, useLeads } from "@/hooks/useLeads";
+import { useActiveFunnel } from "@/hooks/useActiveFunnel";
 import { AppHeader } from "@/components/AppHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,8 +27,9 @@ const stageColorVar: Record<string, string> = {
 };
 
 const Dashboard = () => {
-  const stages = useStages();
-  const leads = useLeads();
+  const { activeFunnel, activeFunnelId, loading: funnelLoading } = useActiveFunnel();
+  const stages = useStages(activeFunnelId, !!activeFunnelId);
+  const leads = useLeads(activeFunnelId, !!activeFunnelId);
 
   const today = useMemo(() => {
     const d = new Date();
@@ -106,7 +108,7 @@ const Dashboard = () => {
     };
   }, [leads.data, stages.data, today]);
 
-  const loading = stages.isLoading || leads.isLoading;
+  const loading = funnelLoading || stages.isLoading || leads.isLoading;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -120,12 +122,26 @@ const Dashboard = () => {
         <p className="text-sm text-muted-foreground mt-0.5">
           Visão geral do pipeline e performance — dados em tempo real
         </p>
+        {activeFunnel && (
+          <p className="mt-1 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            Negocio ativo: {activeFunnel.name}
+          </p>
+        )}
       </div>
 
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-accent" />
         </div>
+      ) : !activeFunnelId ? (
+        <main className="flex-1 px-4 md:px-6 py-6">
+          <Card className="mx-auto max-w-2xl p-8 text-center">
+            <h3 className="text-lg font-semibold text-foreground">Nenhum funil disponivel</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Seu usuario nao possui acesso a um funil ativo no momento.
+            </p>
+          </Card>
+        </main>
       ) : (
         <main className="flex-1 px-4 md:px-6 py-6 space-y-6">
           {/* Banner: Ações de hoje */}

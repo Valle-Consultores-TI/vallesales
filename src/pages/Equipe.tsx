@@ -15,6 +15,7 @@ import {
   usePermissions,
 } from "@/hooks/useUserRoles";
 import { useProfiles } from "@/hooks/useLeads";
+import { useFunnels } from "@/hooks/useFunnels";
 import { isOwnerEmail } from "@/lib/access";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import type { Profile } from "@/types/crm";
+import type { Funnel, Profile } from "@/types/crm";
 
 const statusTone: Record<UserAccessStatus, string> = {
   pending: "bg-warning/12 text-warning border-warning/25",
@@ -35,6 +36,7 @@ export const TeamManagement = () => {
   const { user } = useAuth();
   const perms = usePermissions();
   const profiles = useProfiles(perms.canManageTeam);
+  const funnels = useFunnels(perms.canManageTeam);
   const qc = useQueryClient();
 
   const allRoles = useQuery({
@@ -47,9 +49,21 @@ export const TeamManagement = () => {
     },
   });
 
+  const allFunnelAccess = useQuery({
+    queryKey: ["user_funnel_access_all"],
+    enabled: perms.canManageTeam,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("user_funnel_access").select("user_id, funnel_id");
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const invalidateUserState = () => {
+    qc.invalidateQueries({ queryKey: ["funnels"] });
     qc.invalidateQueries({ queryKey: ["profiles"] });
     qc.invalidateQueries({ queryKey: ["user_roles_all"] });
+    qc.invalidateQueries({ queryKey: ["user_funnel_access_all"] });
     qc.invalidateQueries({ queryKey: ["my_roles"] });
     qc.invalidateQueries({ queryKey: ["my_profile"] });
     qc.invalidateQueries({ queryKey: ["assignable_profiles"] });
@@ -98,6 +112,30 @@ export const TeamManagement = () => {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const setFunnelScope = useMutation({
+    mutationFn: async ({
+      userId,
+      hasAllFunnelAccess,
+      funnelId,
+    }: {
+      userId: string;
+      hasAllFunnelAccess: boolean;
+      funnelId: string | null;
+    }) => {
+      const { error } = await supabase.rpc("set_user_funnel_scope", {
+        _target_user_id: userId,
+        _has_all_funnel_access: hasAllFunnelAccess,
+        _funnel_id: funnelId,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      invalidateUserState();
+      toast.success("Acesso ao funil atualizado");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   const rolesByUser = useMemo(() => {
     const order: Record<OperationalRole, number> = {
       admin: 1,
@@ -116,6 +154,16 @@ export const TeamManagement = () => {
     });
     return map;
   }, [allRoles.data]);
+
+  const funnelAccessByUser = useMemo(() => {
+    const map = new Map<string, string[]>();
+    (allFunnelAccess.data ?? []).forEach((row) => {
+      const current = map.get(row.user_id) ?? [];
+      current.push(row.funnel_id);
+      map.set(row.user_id, current);
+    });
+    return map;
+  }, [allFunnelAccess.data]);
 
   if (perms.isLoading) {
     return (
@@ -142,7 +190,7 @@ export const TeamManagement = () => {
         </p>
       </div>
 
-      {profiles.isLoading || allRoles.isLoading ? (
+      {profiles.isLoading || allRoles.isLoading || allFunnelAccess.isLoading || funnels.isLoading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
@@ -155,25 +203,37 @@ export const TeamManagement = () => {
                   <th className="px-4 py-3 font-medium text-muted-foreground">Usuario</th>
                   <th className="px-4 py-3 font-medium text-muted-foreground">Funcao</th>
                   <th className="px-4 py-3 font-medium text-muted-foreground">Status</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">Acesso aos funis</th>
                   <th className="px-4 py-3 text-center font-medium text-muted-foreground">Recebe leads</th>
                 </tr>
               </thead>
               <tbody>
                 {(profiles.data ?? []).map((profile) => {
                   const role = rolesByUser.get(profile.id) ?? null;
+                  const assignedFunnelId = (funnelAccessByUser.get(profile.id) ?? [])[0] ?? null;
                   return (
                     <UserRow
                       key={profile.id}
                       profile={profile}
                       role={role}
+                      funnelOptions={funnels.data ?? []}
+                      assignedFunnelId={assignedFunnelId}
                       currentUserId={user?.id ?? null}
                       currentUserIsAdmin={perms.isAdmin}
-                      isBusy={setRole.isPending || setStatus.isPending || updateProfile.isPending}
+                      isBusy={
+                        setRole.isPending
+                        || setStatus.isPending
+                        || setFunnelScope.isPending
+                        || updateProfile.isPending
+                      }
                       roleOptions={visibleRoleOptions}
                       onSaveName={(fullName) => updateProfile.mutate({ id: profile.id, full_name: fullName })}
                       onToggleReceive={(value) => updateProfile.mutate({ id: profile.id, can_receive_leads: value })}
                       onChangeRole={(nextRole) => setRole.mutate({ userId: profile.id, role: nextRole })}
                       onChangeStatus={(nextStatus) => setStatus.mutate({ userId: profile.id, status: nextStatus })}
+                      onChangeFunnelScope={(hasAllFunnelAccess, funnelId) =>
+                        setFunnelScope.mutate({ userId: profile.id, hasAllFunnelAccess, funnelId })
+                      }
                     />
                   );
                 })}
@@ -200,6 +260,8 @@ export const TeamManagement = () => {
 const UserRow = ({
   profile,
   role,
+  funnelOptions,
+  assignedFunnelId,
   currentUserId,
   currentUserIsAdmin,
   isBusy,
@@ -208,9 +270,12 @@ const UserRow = ({
   onToggleReceive,
   onChangeRole,
   onChangeStatus,
+  onChangeFunnelScope,
 }: {
   profile: Profile;
   role: OperationalRole | null;
+  funnelOptions: Funnel[];
+  assignedFunnelId: string | null;
   currentUserId: string | null;
   currentUserIsAdmin: boolean;
   isBusy: boolean;
@@ -219,6 +284,7 @@ const UserRow = ({
   onToggleReceive: (value: boolean) => void;
   onChangeRole: (role: OperationalRole) => void;
   onChangeStatus: (status: Exclude<UserAccessStatus, "pending">) => void;
+  onChangeFunnelScope: (hasAllFunnelAccess: boolean, funnelId: string | null) => void;
 }) => {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(profile.full_name ?? "");
@@ -234,6 +300,8 @@ const UserRow = ({
     canManageTarget &&
     status === "active" &&
     (role === "admin" || role === "gestor" || role === "consultor");
+  const funnelAccessValue = profile.has_all_funnel_access ? "__all__" : assignedFunnelId ?? "__pending__";
+  const assignedFunnelName = funnelOptions.find((funnel) => funnel.id === assignedFunnelId)?.name ?? null;
 
   return (
     <tr className="border-b hover:bg-muted/20 last:border-0">
@@ -381,6 +449,45 @@ const UserRow = ({
               ))}
             </SelectContent>
           </Select>
+        </div>
+      </td>
+
+      <td className="px-4 py-3">
+        <div className="space-y-1">
+          <Select
+            value={funnelAccessValue}
+            onValueChange={(value) => {
+              if (value === "__pending__") return;
+              if (value === "__all__") {
+                onChangeFunnelScope(true, null);
+                return;
+              }
+              onChangeFunnelScope(false, value);
+            }}
+            disabled={!canManageTarget || isBusy}
+          >
+            <SelectTrigger className="h-8 w-52">
+              <SelectValue>
+                {profile.has_all_funnel_access ? "Todos os funis" : assignedFunnelName ?? "Selecionar funil"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {!profile.has_all_funnel_access && !assignedFunnelId && (
+                <SelectItem value="__pending__" disabled>
+                  Selecionar funil
+                </SelectItem>
+              )}
+              <SelectItem value="__all__">Todos os funis</SelectItem>
+              {funnelOptions.map((funnel) => (
+                <SelectItem key={funnel.id} value={funnel.id}>
+                  {funnel.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="text-xs text-muted-foreground">
+            {profile.has_all_funnel_access ? "Visualiza todos os negocios" : assignedFunnelName ?? "Acesso especifico pendente"}
+          </div>
         </div>
       </td>
 
