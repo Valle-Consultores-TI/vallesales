@@ -268,7 +268,7 @@ const Contacts = () => {
 
           <Select value={funnelView} onValueChange={(value) => setFunnelView(value as FunnelView)}>
             <SelectTrigger className="h-9 bg-background md:w-56">
-              <SelectValue placeholder="Negocio" />
+              <SelectValue placeholder="Funil" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="active">
@@ -283,7 +283,7 @@ const Contacts = () => {
               <SelectValue placeholder="Situacao" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="all">Todas as situacoes</SelectItem>
               <SelectItem value="open">Em aberto</SelectItem>
               <SelectItem value="lost">Perdido</SelectItem>
               <SelectItem value="won">Cliente</SelectItem>
@@ -333,7 +333,6 @@ const Contacts = () => {
                   <tr className="text-left">
                     <th className="px-4 py-3 font-medium text-muted-foreground">Nome</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">Tipo</th>
-                    <th className="px-4 py-3 font-medium text-muted-foreground">Negocio</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">Empresa</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">Telefone</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">E-mail</th>
@@ -346,7 +345,7 @@ const Contacts = () => {
                       <td className="px-4 py-3">
                         <div className="min-w-0">
                           <p className="truncate font-medium text-foreground">{row.contactName}</p>
-                          <p className="text-xs text-muted-foreground">Lead vinculado: {row.leadId.slice(0, 8)}</p>
+                          <p className="truncate text-xs text-muted-foreground">Funil: {row.funnelName}</p>
                         </div>
                       </td>
                       <td className="px-4 py-3">
@@ -354,7 +353,6 @@ const Contacts = () => {
                           {contactKindLabels[row.contactKind]}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 text-foreground">{row.funnelName}</td>
                       <td className="px-4 py-3 text-foreground">{row.company}</td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {row.phone ? (

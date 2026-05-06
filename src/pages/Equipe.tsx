@@ -202,7 +202,6 @@ export const TeamManagement = () => {
                 <tr className="text-left">
                   <th className="px-4 py-3 font-medium text-muted-foreground">Usuario</th>
                   <th className="px-4 py-3 font-medium text-muted-foreground">Funcao</th>
-                  <th className="px-4 py-3 font-medium text-muted-foreground">Status</th>
                   <th className="px-4 py-3 font-medium text-muted-foreground">Acesso aos funis</th>
                   <th className="px-4 py-3 text-center font-medium text-muted-foreground">Recebe leads</th>
                 </tr>
@@ -306,67 +305,108 @@ const UserRow = ({
   return (
     <tr className="border-b hover:bg-muted/20 last:border-0">
       <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          {editing ? (
-            <div className="flex items-center gap-1">
-              <Input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                className="h-8 w-44"
-                maxLength={120}
-              />
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7"
-                onClick={() => {
-                  onSaveName(name.trim());
-                  setEditing(false);
-                }}
-              >
-                <Check className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7"
-                onClick={() => {
-                  setName(profile.full_name ?? "");
-                  setEditing(false);
-                }}
-              >
-                <X className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          ) : (
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <p className="truncate font-medium text-foreground">
-                  {profile.full_name || profile.email || "Sem nome"}
-                </p>
-                {isOwner && (
-                  <Badge variant="secondary" className="gap-1 text-[10px]">
-                    <Crown className="h-3 w-3" />
-                    Owner
+        <div className="space-y-2">
+          <div>
+            <Select
+              value={status === "pending" ? "__pending__" : status}
+              onValueChange={(value) => {
+                if (value !== "__pending__") onChangeStatus(value as Exclude<UserAccessStatus, "pending">);
+              }}
+              disabled={!canManageTarget || isBusy}
+            >
+              <SelectTrigger className="h-7 min-w-[120px] w-fit border-none bg-transparent px-0 text-left shadow-none focus:ring-0 focus:ring-offset-0">
+                <SelectValue>
+                  <Badge variant="outline" className={statusTone[status]}>
+                    {STATUS_LABELS[status]}
                   </Badge>
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {status === "pending" && (
+                  <SelectItem value="__pending__" disabled>
+                    Aguardando aprovacao
+                  </SelectItem>
                 )}
-                {isSelf && (
-                  <Badge variant="secondary" className="text-[10px]">
-                    voce
-                  </Badge>
-                )}
+                {MANAGEABLE_STATUS_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    <div>
+                      <div className="font-medium">{option.label}</div>
+                      <div className="text-xs text-muted-foreground">{option.description}</div>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {status === "pending" && (
+              <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-warning">
+                <UserRoundCheck className="h-3 w-3" />
+                Aguardando aprovacao
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {editing ? (
+              <div className="flex items-center gap-1">
+                <Input
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  className="h-8 w-44"
+                  maxLength={120}
+                />
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-6 w-6"
-                  onClick={() => setEditing(true)}
+                  className="h-7 w-7"
+                  onClick={() => {
+                    onSaveName(name.trim());
+                    setEditing(false);
+                  }}
                 >
-                  <Pencil className="h-3 w-3" />
+                  <Check className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7"
+                  onClick={() => {
+                    setName(profile.full_name ?? "");
+                    setEditing(false);
+                  }}
+                >
+                  <X className="h-3.5 w-3.5" />
                 </Button>
               </div>
-              <p className="truncate text-xs text-muted-foreground">{profile.email}</p>
-            </div>
-          )}
+            ) : (
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <p className="truncate font-medium text-foreground">
+                    {profile.full_name || profile.email || "Sem nome"}
+                  </p>
+                  {isOwner && (
+                    <Badge variant="secondary" className="gap-1 text-[10px]">
+                      <Crown className="h-3 w-3" />
+                      Owner
+                    </Badge>
+                  )}
+                  {isSelf && (
+                    <Badge variant="secondary" className="text-[10px]">
+                      voce
+                    </Badge>
+                  )}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6"
+                    onClick={() => setEditing(true)}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                </div>
+                <p className="truncate text-xs text-muted-foreground">{profile.email}</p>
+              </div>
+            )}
+          </div>
         </div>
       </td>
 
@@ -413,42 +453,6 @@ const UserRow = ({
               </span>
             )}
           </div>
-        </div>
-      </td>
-
-      <td className="px-4 py-3">
-        <div className="space-y-1">
-          <Badge variant="outline" className={statusTone[status]}>
-            {STATUS_LABELS[status]}
-          </Badge>
-          <Select
-            value={status === "pending" ? "__pending__" : status}
-            onValueChange={(value) => {
-              if (value !== "__pending__") onChangeStatus(value as Exclude<UserAccessStatus, "pending">);
-            }}
-            disabled={!canManageTarget || isBusy}
-          >
-            <SelectTrigger className="h-8 w-44">
-              <SelectValue>
-                {STATUS_LABELS[status]}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {status === "pending" && (
-                <SelectItem value="__pending__" disabled>
-                  Aguardando aprovacao
-                </SelectItem>
-              )}
-              {MANAGEABLE_STATUS_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  <div>
-                    <div className="font-medium">{option.label}</div>
-                    <div className="text-xs text-muted-foreground">{option.description}</div>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
       </td>
 
@@ -501,12 +505,6 @@ const UserRow = ({
           <span className="text-xs text-muted-foreground">
             {canToggleReceive ? "Elegivel" : status === "pending" ? "Pendente" : role === "visualizador" ? "Somente leitura" : "Bloqueado"}
           </span>
-          {status === "pending" && (
-            <span className="inline-flex items-center gap-1 text-[11px] text-warning">
-              <UserRoundCheck className="h-3 w-3" />
-              Aprovar definindo a funcao
-            </span>
-          )}
         </div>
       </td>
     </tr>
