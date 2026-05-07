@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { ContactRound, Building2, Kanban, LayoutDashboard, LogOut, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +59,7 @@ export const AppHeader = ({ active }: { active: AppHeaderSection }) => {
         </nav>
 
         <div className="flex items-center gap-2">
+          <NotificationBell />
           <span className="hidden md:block text-sm text-header-muted truncate max-w-[200px]">{user?.email}</span>
           <Button variant="ghost" size="sm" onClick={signOut} className="text-header-foreground hover:bg-header-hover/10 hover:text-header-foreground">
             <LogOut className="h-4 w-4 md:mr-1" />

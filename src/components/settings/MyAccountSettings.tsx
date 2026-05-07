@@ -5,6 +5,13 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { ROLE_LABELS, STATUS_LABELS, type OperationalRole, type UserAccessStatus } from "@/hooks/useUserRoles";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  NOTIFICATION_OPTIONS,
+  normalizeNotificationPreferences,
+  type NotificationPreferenceKey,
+  type NotificationPreferences,
+} from "@/lib/notifications";
 import type { Profile } from "@/types/crm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,80 +27,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-
-type NotificationPreferenceKey =
-  | "new_leads"
-  | "contact_changes"
-  | "tasks"
-  | "funnel_updates"
-  | "team_updates";
-
-type NotificationPreferences = Record<NotificationPreferenceKey, boolean>;
-
-const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
-  new_leads: true,
-  contact_changes: true,
-  tasks: true,
-  funnel_updates: true,
-  team_updates: false,
-};
-
-const NOTIFICATION_OPTIONS: {
-  key: NotificationPreferenceKey;
-  label: string;
-  description: string;
-}[] = [
-  {
-    key: "new_leads",
-    label: "Novos leads",
-    description: "Avisos quando um novo lead entrar na sua fila ou no seu funil.",
-  },
-  {
-    key: "contact_changes",
-    label: "Alteracoes em contatos",
-    description: "Atualizacoes importantes em contatos e relacoes ligadas aos seus negocios.",
-  },
-  {
-    key: "tasks",
-    label: "Tarefas",
-    description: "Lembretes e movimentacoes de tarefas vinculadas ao seu trabalho comercial.",
-  },
-  {
-    key: "funnel_updates",
-    label: "Atualizacoes no funil",
-    description: "Mudancas de etapa, ganhos, perdas e avancos relevantes no funil.",
-  },
-  {
-    key: "team_updates",
-    label: "Notificacoes da equipe",
-    description: "Comunicados operacionais e movimentacoes compartilhadas do time.",
-  },
-];
-
-const normalizeNotificationPreferences = (value: Profile["notification_preferences"] | null): NotificationPreferences => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return DEFAULT_NOTIFICATION_PREFERENCES;
-  }
-
-  const raw = value as Record<string, unknown>;
-
-  return {
-    new_leads: typeof raw.new_leads === "boolean" ? raw.new_leads : DEFAULT_NOTIFICATION_PREFERENCES.new_leads,
-    contact_changes:
-      typeof raw.contact_changes === "boolean"
-        ? raw.contact_changes
-        : DEFAULT_NOTIFICATION_PREFERENCES.contact_changes,
-    tasks: typeof raw.tasks === "boolean" ? raw.tasks : DEFAULT_NOTIFICATION_PREFERENCES.tasks,
-    funnel_updates:
-      typeof raw.funnel_updates === "boolean"
-        ? raw.funnel_updates
-        : DEFAULT_NOTIFICATION_PREFERENCES.funnel_updates,
-    team_updates:
-      typeof raw.team_updates === "boolean"
-        ? raw.team_updates
-        : DEFAULT_NOTIFICATION_PREFERENCES.team_updates,
-  };
-};
 
 const statusTone: Record<UserAccessStatus, string> = {
   pending: "bg-warning/12 text-warning border-warning/25",
@@ -312,8 +245,7 @@ export const MyAccountSettings = ({
           <CardHeader className="pb-4">
             <CardTitle className="text-lg">Preferencias de notificacao</CardTitle>
             <CardDescription>
-              Escolha quais categorias de aviso voce quer receber. A base fica salva mesmo antes do modulo completo de
-              notificacoes estar pronto.
+              Escolha quais categorias de aviso devem aparecer no sino e na lista de notificacoes do CRM.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

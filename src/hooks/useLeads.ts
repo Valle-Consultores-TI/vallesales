@@ -86,6 +86,7 @@ export const useCreateLead = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["leads"] });
+      qc.invalidateQueries({ queryKey: ["crm_notifications_feed"] });
       toast.success("Lead criado");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -107,6 +108,7 @@ export const useUpdateLead = (options?: { errorMessage?: string }) => {
       qc.invalidateQueries({ queryKey: ["leads"] });
       qc.invalidateQueries({ queryKey: ["lead", vars.id] });
       qc.invalidateQueries({ queryKey: ["lead_activities", vars.id] });
+      qc.invalidateQueries({ queryKey: ["crm_notifications_feed"] });
     },
     onError: (e: Error) => toast.error(options?.errorMessage ?? e.message),
   });
@@ -185,6 +187,7 @@ export const useAddNote = (leadId: string) => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["lead_notes", leadId] });
       qc.invalidateQueries({ queryKey: ["lead_activities", leadId] });
+      qc.invalidateQueries({ queryKey: ["crm_notifications_feed"] });
       toast.success("Observação adicionada");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -212,6 +215,7 @@ export const useLogContact = (leadId: string) => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["lead_activities", leadId] });
+      qc.invalidateQueries({ queryKey: ["crm_notifications_feed"] });
       qc.invalidateQueries({ queryKey: ["lead", leadId] });
       qc.invalidateQueries({ queryKey: ["leads"] });
       toast.success("Contato registrado");
@@ -275,6 +279,7 @@ export const useUploadAttachment = (leadId: string) => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["lead_attachments", leadId] });
       qc.invalidateQueries({ queryKey: ["lead_activities", leadId] });
+      qc.invalidateQueries({ queryKey: ["crm_notifications_feed"] });
       toast.success("Anexo enviado");
     },
     onError: (e: Error) => toast.error(e.message),

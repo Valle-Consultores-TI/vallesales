@@ -409,6 +409,22 @@ const getStageName = async (stageId: string | null) => {
   return stage?.name || "?";
 };
 
+const contactNotificationFields = [
+  "company_or_person",
+  "contact_name",
+  "phone",
+  "email",
+  "source",
+  "segment",
+  "segment_other",
+  "city",
+  "uf",
+  "additional_contacts",
+] as const;
+
+const getChangedFields = (current: LeadRow, updated: LeadRow, fields: readonly string[]) =>
+  fields.filter((field) => JSON.stringify(current[field]) !== JSON.stringify(updated[field]));
+
 const logActivity = async (
   leadId: string,
   type: string,
@@ -561,6 +577,17 @@ serve(async (req) => {
           `Responsavel alterado de "${oldOwner}" para "${newOwner}"`,
           userId,
           { from: current.owner_id, to: updated.owner_id },
+        );
+      }
+
+      const changedContactFields = getChangedFields(current, updated, contactNotificationFields);
+      if (changedContactFields.length > 0) {
+        await logActivity(
+          id,
+          "lead_updated",
+          `Dados de contato atualizados em "${updated.company_or_person ?? updated.contact_name ?? "Lead"}"`,
+          userId,
+          { fields: changedContactFields },
         );
       }
 
