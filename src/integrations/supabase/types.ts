@@ -325,45 +325,48 @@ export type Database = {
           },
         ]
       }
-      profiles: {
-        Row: {
-          access_status: Database["public"]["Enums"]["user_access_status"]
-          avatar_url: string | null
-          can_receive_leads: boolean
-          created_at: string
-          email: string | null
-          full_name: string | null
-          has_all_funnel_access: boolean
-          id: string
-          is_active: boolean
-          updated_at: string
+        profiles: {
+          Row: {
+            access_status: Database["public"]["Enums"]["user_access_status"]
+            avatar_url: string | null
+            can_receive_leads: boolean
+            created_at: string
+            email: string | null
+            full_name: string | null
+            has_all_funnel_access: boolean
+            id: string
+            is_active: boolean
+            notification_preferences: Json
+            updated_at: string
+          }
+          Insert: {
+            access_status?: Database["public"]["Enums"]["user_access_status"]
+            avatar_url?: string | null
+            can_receive_leads?: boolean
+            created_at?: string
+            email?: string | null
+            full_name?: string | null
+            has_all_funnel_access?: boolean
+            id: string
+            is_active?: boolean
+            notification_preferences?: Json
+            updated_at?: string
+          }
+          Update: {
+            access_status?: Database["public"]["Enums"]["user_access_status"]
+            avatar_url?: string | null
+            can_receive_leads?: boolean
+            created_at?: string
+            email?: string | null
+            full_name?: string | null
+            has_all_funnel_access?: boolean
+            id?: string
+            is_active?: boolean
+            notification_preferences?: Json
+            updated_at?: string
+          }
+          Relationships: []
         }
-        Insert: {
-          access_status?: Database["public"]["Enums"]["user_access_status"]
-          avatar_url?: string | null
-          can_receive_leads?: boolean
-          created_at?: string
-          email?: string | null
-          full_name?: string | null
-          has_all_funnel_access?: boolean
-          id: string
-          is_active?: boolean
-          updated_at?: string
-        }
-        Update: {
-          access_status?: Database["public"]["Enums"]["user_access_status"]
-          avatar_url?: string | null
-          can_receive_leads?: boolean
-          created_at?: string
-          email?: string | null
-          full_name?: string | null
-          has_all_funnel_access?: boolean
-          id?: string
-          is_active?: boolean
-          updated_at?: string
-        }
-        Relationships: []
-      }
       user_funnel_access: {
         Row: {
           created_at: string
