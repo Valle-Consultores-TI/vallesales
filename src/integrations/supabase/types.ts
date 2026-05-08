@@ -516,6 +516,19 @@ export type Database = {
           updated_at: string
         }[]
       }
+      rename_funnel: {
+        Args: {
+          _funnel_id: string
+          _name: string
+        }
+        Returns: {
+          created_at: string
+          id: string
+          is_default: boolean
+          name: string
+          updated_at: string
+        }
+      }
       set_user_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

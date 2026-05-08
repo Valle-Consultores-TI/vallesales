@@ -54,3 +54,29 @@ export const useCreateFunnel = () => {
     onError: (error: Error) => toast.error(error.message),
   });
 };
+
+export const useRenameFunnel = () => {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ funnelId, name }: { funnelId: string; name: string }) => {
+      const trimmed = name.trim();
+      if (!trimmed) {
+        throw new Error("Informe o nome do funil.");
+      }
+
+      const { data, error } = await supabase.rpc("rename_funnel", {
+        _funnel_id: funnelId,
+        _name: trimmed,
+      });
+      if (error) throw error;
+      return data as Funnel;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["funnels"] });
+      qc.invalidateQueries({ queryKey: ["funnel_access_options"] });
+      toast.success("Nome do funil atualizado");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+};

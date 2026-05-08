@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useStages, useLeads, useProfiles } from "@/hooks/useLeads";
 import { usePermissions } from "@/hooks/useUserRoles";
 import { useActiveFunnel } from "@/hooks/useActiveFunnel";
-import { useCreateFunnel } from "@/hooks/useFunnels";
+import { useCreateFunnel, useRenameFunnel } from "@/hooks/useFunnels";
 import { KanbanBoard } from "@/components/crm/KanbanBoard";
 import { AppHeader } from "@/components/AppHeader";
 import { LeadFormDialog } from "@/components/crm/LeadFormDialog";
@@ -26,8 +26,6 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -48,6 +46,7 @@ import {
   ChevronDown,
   Check,
   Lock,
+  Pencil,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { Lead } from "@/types/crm";
@@ -68,6 +67,7 @@ const Index = () => {
     setActiveFunnelId,
   } = useActiveFunnel();
   const createFunnel = useCreateFunnel();
+  const renameFunnel = useRenameFunnel();
   const stages = useStages(activeFunnelId, !!activeFunnelId);
   const leads = useLeads(activeFunnelId, !!activeFunnelId);
   const profiles = useProfiles();
@@ -83,7 +83,11 @@ const Index = () => {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [funnelDialogOpen, setFunnelDialogOpen] = useState(false);
+  const [funnelMenuOpen, setFunnelMenuOpen] = useState(false);
   const [newFunnelName, setNewFunnelName] = useState("");
+  const [renameFunnelName, setRenameFunnelName] = useState("");
+  const [editingFunnelId, setEditingFunnelId] = useState<string | null>(null);
+  const funnelClickTimerRef = useRef<number | null>(null);
 
   const today = useMemo(() => {
     const d = new Date();
@@ -199,6 +203,7 @@ const Index = () => {
 
   const loading = funnelLoading || stages.isLoading || leads.isLoading;
   const hasActiveFilters = ownerFilter !== "all" || statusFilter !== "todos" || !!search || onlyMine;
+  const canRenameFunnels = perms.isAdmin || perms.isGestor;
 
   const clearFilters = () => {
     setSearch("");
@@ -212,6 +217,39 @@ const Index = () => {
     setActiveFunnelId(created.id);
     setNewFunnelName("");
     setFunnelDialogOpen(false);
+  };
+
+  const openInlineFunnelRename = (funnel: { id: string; name: string }) => {
+    setEditingFunnelId(funnel.id);
+    setRenameFunnelName(funnel.name);
+    setFunnelMenuOpen(true);
+  };
+
+  const handleRenameFunnel = async () => {
+    if (!editingFunnelId) return;
+    await renameFunnel.mutateAsync({
+      funnelId: editingFunnelId,
+      name: renameFunnelName,
+    });
+    setEditingFunnelId(null);
+    setFunnelMenuOpen(false);
+  };
+
+  const cancelInlineFunnelRename = () => {
+    setRenameFunnelName("");
+    setEditingFunnelId(null);
+  };
+
+  const handleFunnelItemClick = (funnelId: string) => {
+    if (funnelClickTimerRef.current) {
+      window.clearTimeout(funnelClickTimerRef.current);
+    }
+
+    funnelClickTimerRef.current = window.setTimeout(() => {
+      setActiveFunnelId(funnelId);
+      setFunnelMenuOpen(false);
+      funnelClickTimerRef.current = null;
+    }, 180);
   };
 
   return (
@@ -234,7 +272,7 @@ const Index = () => {
                 </h2>
               </div>
 
-              <DropdownMenu>
+              <DropdownMenu open={funnelMenuOpen} onOpenChange={setFunnelMenuOpen}>
                 <DropdownMenuTrigger asChild>
                   <Button
                     type="button"
@@ -264,19 +302,94 @@ const Index = () => {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
-                  <DropdownMenuRadioGroup value={activeFunnelId ?? ""} onValueChange={setActiveFunnelId}>
-                    {accessibleFunnels.map((funnel) => (
-                      <DropdownMenuRadioItem key={funnel.id} value={funnel.id} className="gap-3 rounded-md py-2 pr-3">
+                  {accessibleFunnels.map((funnel) => (
+                    editingFunnelId === funnel.id ? (
+                      <div key={funnel.id} className="flex items-center gap-2 rounded-md px-2 py-2">
                         <Building2 className="h-4 w-4 shrink-0 text-accent" />
-                        <span className="truncate">{funnel.name}</span>
+                        <Input
+                          value={renameFunnelName}
+                          onChange={(event) => setRenameFunnelName(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void handleRenameFunnel();
+                            }
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              cancelInlineFunnelRename();
+                            }
+                          }}
+                          className="h-8 flex-1"
+                          maxLength={120}
+                          autoFocus
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="accent"
+                          className="h-8 px-2"
+                          onClick={() => void handleRenameFunnel()}
+                          disabled={renameFunnel.isPending || !renameFunnelName.trim()}
+                        >
+                          {renameFunnel.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 px-2"
+                          onClick={cancelInlineFunnelRename}
+                          disabled={renameFunnel.isPending}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <button
+                        key={funnel.id}
+                        type="button"
+                        onClick={() => handleFunnelItemClick(funnel.id)}
+                        className={cn(
+                          "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-muted/60",
+                          activeFunnelId === funnel.id && "bg-muted/60",
+                        )}
+                      >
+                        <Building2 className="h-4 w-4 shrink-0 text-accent" />
+                        <span
+                          className={cn(
+                            "truncate",
+                            canRenameFunnels && "cursor-text rounded-sm transition-colors hover:bg-accent/10",
+                          )}
+                        >
+                          {funnel.name}
+                        </span>
+                        {canRenameFunnels && (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              if (funnelClickTimerRef.current) {
+                                window.clearTimeout(funnelClickTimerRef.current);
+                                funnelClickTimerRef.current = null;
+                              }
+                              openInlineFunnelRename(funnel);
+                            }}
+                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 transition-colors hover:bg-accent/10 hover:text-accent"
+                            aria-label={`Editar nome do funil ${funnel.name}`}
+                            title="Editar nome do funil"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                         {funnel.is_default && (
                           <Badge variant="secondary" className="ml-auto">
                             Principal
                           </Badge>
                         )}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
+                      </button>
+                    )
+                  ))}
                 </DropdownMenuGroup>
 
                 {blockedFunnels.length > 0 && (
@@ -592,6 +705,7 @@ const Index = () => {
           </form>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 };
