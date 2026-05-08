@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate } from "react-router-dom";
-import { Check, Crown, Loader2, Pencil, ShieldCheck, UserRoundCheck, X } from "lucide-react";
+import { Check, ChevronDown, Crown, Loader2, Pencil, ShieldCheck, UserRoundCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -17,10 +17,13 @@ import {
 import { useProfiles } from "@/hooks/useLeads";
 import { useFunnels } from "@/hooks/useFunnels";
 import { isOwnerEmail } from "@/lib/access";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import type { Funnel, Profile } from "@/types/crm";
@@ -116,22 +119,22 @@ export const TeamManagement = () => {
     mutationFn: async ({
       userId,
       hasAllFunnelAccess,
-      funnelId,
+      funnelIds,
     }: {
       userId: string;
       hasAllFunnelAccess: boolean;
-      funnelId: string | null;
+      funnelIds: string[];
     }) => {
       const { error } = await supabase.rpc("set_user_funnel_scope", {
         _target_user_id: userId,
         _has_all_funnel_access: hasAllFunnelAccess,
-        _funnel_id: funnelId,
+        _funnel_ids: funnelIds,
       });
       if (error) throw error;
     },
     onSuccess: () => {
       invalidateUserState();
-      toast.success("Acesso ao funil atualizado");
+      toast.success("Acessos aos funis atualizados");
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -220,14 +223,14 @@ export const TeamManagement = () => {
               <tbody>
                 {(profiles.data ?? []).map((profile) => {
                   const role = rolesByUser.get(profile.id) ?? null;
-                  const assignedFunnelId = (funnelAccessByUser.get(profile.id) ?? [])[0] ?? null;
+                  const assignedFunnelIds = funnelAccessByUser.get(profile.id) ?? [];
                   return (
                     <UserRow
                       key={profile.id}
                       profile={profile}
                       role={role}
                       funnelOptions={funnels.data ?? []}
-                      assignedFunnelId={assignedFunnelId}
+                      assignedFunnelIds={assignedFunnelIds}
                       currentUserId={user?.id ?? null}
                       currentUserIsAdmin={perms.isAdmin}
                       isBusy={
@@ -241,8 +244,8 @@ export const TeamManagement = () => {
                       onToggleReceive={(value) => updateProfile.mutate({ id: profile.id, can_receive_leads: value })}
                       onChangeRole={(nextRole) => setRole.mutate({ userId: profile.id, role: nextRole })}
                       onChangeStatus={(nextStatus) => setStatus.mutate({ userId: profile.id, status: nextStatus })}
-                      onChangeFunnelScope={(hasAllFunnelAccess, funnelId) =>
-                        setFunnelScope.mutate({ userId: profile.id, hasAllFunnelAccess, funnelId })
+                      onChangeFunnelScope={(hasAllFunnelAccess, funnelIds) =>
+                        setFunnelScope.mutate({ userId: profile.id, hasAllFunnelAccess, funnelIds })
                       }
                     />
                   );
@@ -260,7 +263,7 @@ const UserRow = ({
   profile,
   role,
   funnelOptions,
-  assignedFunnelId,
+  assignedFunnelIds,
   currentUserId,
   currentUserIsAdmin,
   isBusy,
@@ -274,7 +277,7 @@ const UserRow = ({
   profile: Profile;
   role: OperationalRole | null;
   funnelOptions: Funnel[];
-  assignedFunnelId: string | null;
+  assignedFunnelIds: string[];
   currentUserId: string | null;
   currentUserIsAdmin: boolean;
   isBusy: boolean;
@@ -283,9 +286,10 @@ const UserRow = ({
   onToggleReceive: (value: boolean) => void;
   onChangeRole: (role: OperationalRole) => void;
   onChangeStatus: (status: Exclude<UserAccessStatus, "pending">) => void;
-  onChangeFunnelScope: (hasAllFunnelAccess: boolean, funnelId: string | null) => void;
+  onChangeFunnelScope: (hasAllFunnelAccess: boolean, funnelIds: string[]) => void;
 }) => {
   const [editing, setEditing] = useState(false);
+  const [funnelPickerOpen, setFunnelPickerOpen] = useState(false);
   const [name, setName] = useState(profile.full_name ?? "");
 
   const status = profile.access_status as UserAccessStatus;
@@ -299,8 +303,44 @@ const UserRow = ({
     canManageTarget &&
     status === "active" &&
     (role === "admin" || role === "gestor" || role === "consultor");
-  const funnelAccessValue = profile.has_all_funnel_access ? "__all__" : assignedFunnelId ?? "__pending__";
-  const assignedFunnelName = funnelOptions.find((funnel) => funnel.id === assignedFunnelId)?.name ?? null;
+  const assignedFunnels = funnelOptions.filter((funnel) => assignedFunnelIds.includes(funnel.id));
+  const hasSpecificFunnelSelection = assignedFunnels.length > 0;
+  const funnelTriggerLabel = profile.has_all_funnel_access
+    ? "Todos os funis"
+    : assignedFunnels.length === 1
+      ? assignedFunnels[0]?.name ?? "Selecionar funis especificos"
+      : assignedFunnels.length > 1
+        ? `${assignedFunnels.length} funis selecionados`
+        : "Selecionar funis especificos";
+  const funnelDescription = profile.has_all_funnel_access
+    ? "Visualiza todos os negocios atuais e futuros."
+    : assignedFunnels.length > 0
+      ? assignedFunnels.map((funnel) => funnel.name).join(", ")
+      : "Selecione ao menos um funil especifico ou use Todos os funis.";
+
+  const handleSelectAllFunnels = () => {
+    onChangeFunnelScope(true, []);
+    setFunnelPickerOpen(false);
+  };
+
+  const handleToggleSpecificFunnel = (funnelId: string) => {
+    const alreadySelected = assignedFunnelIds.includes(funnelId);
+    if (alreadySelected) {
+      const nextIds = assignedFunnelIds.filter((id) => id !== funnelId);
+      if (nextIds.length === 0) {
+        toast.warning("Selecione ao menos um funil especifico ou use Todos os funis.");
+        return;
+      }
+      onChangeFunnelScope(false, nextIds);
+      return;
+    }
+
+    const nextIds = funnelOptions
+      .map((funnel) => funnel.id)
+      .filter((id) => id === funnelId || assignedFunnelIds.includes(id));
+
+    onChangeFunnelScope(false, nextIds);
+  };
 
   return (
     <tr className="border-b hover:bg-muted/20 last:border-0">
@@ -458,39 +498,76 @@ const UserRow = ({
 
       <td className="px-4 py-3">
         <div className="space-y-1">
-          <Select
-            value={funnelAccessValue}
-            onValueChange={(value) => {
-              if (value === "__pending__") return;
-              if (value === "__all__") {
-                onChangeFunnelScope(true, null);
-                return;
-              }
-              onChangeFunnelScope(false, value);
-            }}
-            disabled={!canManageTarget || isBusy}
-          >
-            <SelectTrigger className="h-8 w-52">
-              <SelectValue>
-                {profile.has_all_funnel_access ? "Todos os funis" : assignedFunnelName ?? "Selecionar funil"}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {!profile.has_all_funnel_access && !assignedFunnelId && (
-                <SelectItem value="__pending__" disabled>
-                  Selecionar funil
-                </SelectItem>
-              )}
-              <SelectItem value="__all__">Todos os funis</SelectItem>
-              {funnelOptions.map((funnel) => (
-                <SelectItem key={funnel.id} value={funnel.id}>
-                  {funnel.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="text-xs text-muted-foreground">
-            {profile.has_all_funnel_access ? "Visualiza todos os negocios" : assignedFunnelName ?? "Acesso especifico pendente"}
+          <Popover open={funnelPickerOpen} onOpenChange={setFunnelPickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 w-56 justify-between bg-background font-normal"
+                disabled={!canManageTarget || isBusy}
+              >
+                <span className="truncate text-left">{funnelTriggerLabel}</span>
+                <ChevronDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80 p-2" align="start">
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={handleSelectAllFunnels}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted/60",
+                    profile.has_all_funnel_access && "bg-muted/60",
+                  )}
+                >
+                  <Checkbox checked={profile.has_all_funnel_access} />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-foreground">Todos os funis</p>
+                    <p className="text-xs text-muted-foreground">
+                      Inclui funis atuais e os novos que forem criados.
+                    </p>
+                  </div>
+                  {profile.has_all_funnel_access && <Check className="h-4 w-4 text-accent" />}
+                </button>
+
+                <div className="my-2 h-px bg-border" />
+
+                <div className="px-2 pb-1">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Selecionar funis especificos
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Escolher um funil especifico desmarca a opcao Todos os funis.
+                  </p>
+                </div>
+
+                {funnelOptions.map((funnel) => {
+                  const checked = !profile.has_all_funnel_access && assignedFunnelIds.includes(funnel.id);
+
+                  return (
+                    <button
+                      key={funnel.id}
+                      type="button"
+                      onClick={() => handleToggleSpecificFunnel(funnel.id)}
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted/60",
+                        checked && "bg-muted/60",
+                      )}
+                    >
+                      <Checkbox checked={checked} />
+                      <span className="min-w-0 flex-1 truncate text-foreground">{funnel.name}</span>
+                      {checked && <Check className="h-4 w-4 text-accent" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </PopoverContent>
+          </Popover>
+          <div className={cn(
+            "text-xs",
+            !profile.has_all_funnel_access && !hasSpecificFunnelSelection ? "text-warning" : "text-muted-foreground",
+          )}>
+            {funnelDescription}
           </div>
         </div>
       </td>

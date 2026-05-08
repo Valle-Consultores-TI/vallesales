@@ -548,6 +548,7 @@ export type Database = {
       set_user_funnel_scope: {
         Args: {
           _funnel_id?: string
+          _funnel_ids?: string[]
           _has_all_funnel_access: boolean
           _target_user_id: string
         }

@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:dev": "vite build --mode development",
+    "deploy:hosting": "npm run build && firebase deploy --only hosting",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build",
     "lint": "eslint .",
