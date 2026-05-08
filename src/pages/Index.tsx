@@ -381,7 +381,7 @@ const Index = () => {
                         role="button"
                         tabIndex={0}
                         className={cn(
-                          "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-muted/60",
+                          "flex w-full cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-muted/60",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
                           activeFunnelId === funnel.id && "bg-muted/60",
                         )}
@@ -390,7 +390,7 @@ const Index = () => {
                         <span
                           className={cn(
                             "truncate",
-                            canRenameFunnels && "cursor-text rounded-sm transition-colors hover:bg-accent/10",
+                            canRenameFunnels && "cursor-pointer",
                           )}
                         >
                           {funnel.name}

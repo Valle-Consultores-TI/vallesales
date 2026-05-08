@@ -362,7 +362,7 @@ const Contacts = () => {
                   type="button"
                   onClick={() => handleFunnelSelection(ALL_FUNNELS_VALUE)}
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted/60",
+                    "flex w-full cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted/60",
                     allFunnelsSelected && "bg-muted/60",
                   )}
                 >
@@ -388,7 +388,7 @@ const Contacts = () => {
                       type="button"
                       onClick={() => handleFunnelSelection(funnel.id)}
                       className={cn(
-                        "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted/60",
+                        "flex w-full cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted/60",
                         checked && "bg-muted/60",
                       )}
                     >

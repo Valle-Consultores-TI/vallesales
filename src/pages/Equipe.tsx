@@ -516,7 +516,7 @@ const UserRow = ({
                   type="button"
                   onClick={handleSelectAllFunnels}
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted/60",
+                    "flex w-full cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted/60",
                     profile.has_all_funnel_access && "bg-muted/60",
                   )}
                 >
@@ -550,7 +550,7 @@ const UserRow = ({
                       type="button"
                       onClick={() => handleToggleSpecificFunnel(funnel.id)}
                       className={cn(
-                        "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted/60",
+                        "flex w-full cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted/60",
                         checked && "bg-muted/60",
                       )}
                     >
