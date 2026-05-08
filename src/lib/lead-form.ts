@@ -38,6 +38,10 @@ export const SERVICE_TYPE_OPTIONS = [
   "Legalizacao de Empresas",
   "BPO Financeiro",
   "Coworking e Sede Virtual",
+  "Coworking - Escritório Virtual",
+  "Coworking - Sala Privativa",
+  "Coworking - Estação Compartilhada",
+  "Coworking - Salas de Reunião",
 ] as const;
 
 export type LeadAdditionalContact = {
