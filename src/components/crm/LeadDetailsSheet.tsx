@@ -41,7 +41,7 @@ import {
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Card } from "@/components/ui/card";
-import { parseAdditionalContacts } from "@/lib/lead-form";
+import { parseAdditionalContacts, parseLeadSource } from "@/lib/lead-form";
 
 interface Props {
   lead: Lead | null;
@@ -115,6 +115,7 @@ export const LeadDetailsSheet = ({
   const stage = stages.find((item) => item.id === lead.stage_id);
   const funnel = funnels.find((item) => item.id === lead.funnel_id);
   const additionalContacts = parseAdditionalContacts(lead.additional_contacts);
+  const sourceState = parseLeadSource(lead.source);
   const assignableIds = new Set(assignableProfiles.map((profile) => profile.id));
   const ownerOptions = profiles.filter(
     (profile) => assignableIds.has(profile.id) || profile.id === lead.owner_id,
@@ -262,7 +263,8 @@ export const LeadDetailsSheet = ({
                 value={formatDate(lead.next_follow_up)}
               />
             )}
-            {lead.source && <Info label="Origem" value={lead.source} />}
+            {sourceState.source && <Info label="Origem" value={sourceState.source} />}
+            {sourceState.indication_by && <Info label="Indicacao por" value={sourceState.indication_by} />}
             {lead.segment && <Info label="Segmento" value={lead.segment} />}
             {lead.segment === "Outro" && lead.segment_other && (
               <Info label="Segmento detalhado" value={lead.segment_other} />

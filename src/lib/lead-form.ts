@@ -51,6 +51,39 @@ export type LeadAdditionalContact = {
   email: string;
 };
 
+const INDICATION_SOURCE_PREFIX = "Indicacao:";
+
+export const parseLeadSource = (value: string | null | undefined) => {
+  const source = value?.trim() ?? "";
+  if (!source) {
+    return {
+      source: "",
+      indication_by: "",
+    };
+  }
+
+  if (!source.toLowerCase().startsWith(INDICATION_SOURCE_PREFIX.toLowerCase())) {
+    return {
+      source,
+      indication_by: "",
+    };
+  }
+
+  return {
+    source: "Indicacao",
+    indication_by: source.slice(INDICATION_SOURCE_PREFIX.length).trim(),
+  };
+};
+
+export const serializeLeadSource = (source: string, indicationBy: string) => {
+  const trimmedSource = source.trim();
+  if (!trimmedSource) return null;
+  if (trimmedSource !== "Indicacao") return trimmedSource;
+
+  const trimmedIndicationBy = indicationBy.trim();
+  return trimmedIndicationBy ? `${INDICATION_SOURCE_PREFIX} ${trimmedIndicationBy}` : trimmedSource;
+};
+
 export const digitsOnly = (value: string) => value.replace(/\D/g, "");
 
 export const formatPhone = (value: string) => {

@@ -17,8 +17,10 @@ import {
   isValidLeadPhone,
   LeadAdditionalContact,
   parseAdditionalContacts,
+  parseLeadSource,
   SEGMENT_OPTIONS,
   serializeAdditionalContacts,
+  serializeLeadSource,
   SERVICE_TYPE_OPTIONS,
   TAX_REGIME_OPTIONS,
 } from "@/lib/lead-form";
@@ -39,6 +41,7 @@ type FormState = {
   phone: string;
   email: string;
   source: string;
+  indication_by: string;
   segment: string;
   segment_other: string;
   city: string;
@@ -57,7 +60,7 @@ type FormState = {
   service_details: string;
 };
 
-type FormErrors = Partial<Record<"funnel_id" | "company_or_person" | "contact_name" | "phone" | "stage_id", string>>;
+type FormErrors = Partial<Record<"funnel_id" | "company_or_person" | "contact_name" | "phone" | "stage_id" | "indication_by", string>>;
 
 const tempDot: Record<string, string> = {
   frio: "bg-temp-frio",
@@ -94,6 +97,7 @@ const buildInitialForm = (
   firstStageId?: string,
 ): FormState => {
   const segmentState = normalizeSegmentState(lead);
+  const sourceState = parseLeadSource(lead?.source);
 
   return {
     funnel_id: lead?.funnel_id ?? activeFunnelId ?? "",
@@ -101,7 +105,8 @@ const buildInitialForm = (
     contact_name: lead?.contact_name ?? "",
     phone: lead?.phone ?? "",
     email: lead?.email ?? "",
-    source: lead?.source ?? "",
+    source: sourceState.source,
+    indication_by: sourceState.indication_by,
     segment: segmentState.segment,
     segment_other: segmentState.segment_other,
     city: lead?.city ?? "",
@@ -209,6 +214,9 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
     if (!isValidLeadPhone(form.phone)) {
       nextErrors.phone = "Informe um telefone valido para o contato principal.";
     }
+    if (form.source === "Indicacao" && !form.indication_by.trim()) {
+      nextErrors.indication_by = "Informe quem fez a indicacao.";
+    }
 
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -224,7 +232,7 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
       contact_name: form.contact_name.trim(),
       phone: formatPhone(form.phone),
       email: form.email.trim() || null,
-      source: form.source || null,
+      source: serializeLeadSource(form.source, form.indication_by),
       segment: form.segment || null,
       segment_other: form.segment === "Outro" ? form.segment_other.trim() || null : null,
       city: form.city.trim() || null,
@@ -386,7 +394,16 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
 
               <FieldBlock>
                 <Label>Origem do lead</Label>
-                <Select value={form.source || undefined} onValueChange={(value) => patchForm({ source: value })}>
+                <Select
+                  value={form.source || undefined}
+                  onValueChange={(value) => {
+                    patchForm({
+                      source: value,
+                      indication_by: value === "Indicacao" ? form.indication_by : "",
+                    });
+                    clearError("indication_by");
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
@@ -399,6 +416,20 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
                   </SelectContent>
                 </Select>
               </FieldBlock>
+
+              {form.source === "Indicacao" && (
+                <FieldBlock error={errors.indication_by}>
+                  <Label>Indicacao por</Label>
+                  <Input
+                    placeholder="Quem indicou este lead?"
+                    value={form.indication_by}
+                    onChange={(event) => {
+                      patchForm({ indication_by: event.target.value });
+                      clearError("indication_by");
+                    }}
+                  />
+                </FieldBlock>
+              )}
 
               <FieldBlock>
                 <Label>Valor estimado (R$)</Label>
