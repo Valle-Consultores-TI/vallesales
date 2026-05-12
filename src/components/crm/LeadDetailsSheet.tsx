@@ -41,7 +41,7 @@ import {
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Card } from "@/components/ui/card";
-import { parseAdditionalContacts, parseLeadSource } from "@/lib/lead-form";
+import { COMPANY_MATURITY_LABELS, parseAdditionalContacts, parseLeadSource } from "@/lib/lead-form";
 
 interface Props {
   lead: Lead | null;
@@ -116,6 +116,7 @@ export const LeadDetailsSheet = ({
   const funnel = funnels.find((item) => item.id === lead.funnel_id);
   const additionalContacts = parseAdditionalContacts(lead.additional_contacts);
   const sourceState = parseLeadSource(lead.source);
+  const isOpeningCompanyLead = lead.company_maturity === "opening_company";
   const assignableIds = new Set(assignableProfiles.map((profile) => profile.id));
   const ownerOptions = profiles.filter(
     (profile) => assignableIds.has(profile.id) || profile.id === lead.owner_id,
@@ -267,6 +268,12 @@ export const LeadDetailsSheet = ({
             {lead.employee_count && <Info label="Funcionarios" value={lead.employee_count} />}
             {sourceState.source && <Info label="Origem" value={sourceState.source} />}
             {sourceState.indication_by && <Info label="Indicacao por" value={sourceState.indication_by} />}
+            {lead.company_maturity && (
+              <Info
+                label="Perfil empresarial"
+                value={COMPANY_MATURITY_LABELS[lead.company_maturity as keyof typeof COMPANY_MATURITY_LABELS] ?? lead.company_maturity}
+              />
+            )}
             {lead.segment && <Info label="Segmento" value={lead.segment} />}
             {lead.segment === "Outro" && lead.segment_other && (
               <Info label="Segmento detalhado" value={lead.segment_other} />
@@ -309,10 +316,16 @@ export const LeadDetailsSheet = ({
           {(lead.service_types.length > 0 || lead.service_details) && (
             <Card className="space-y-3 border-border/70 p-4">
               <div>
-                <h4 className="text-sm font-semibold text-foreground">Servico necessario</h4>
-                <p className="text-xs text-muted-foreground">Necessidade comercial registrada no cadastro.</p>
+                <h4 className="text-sm font-semibold text-foreground">
+                  {isOpeningCompanyLead ? "Atividades da futura empresa" : "Servico necessario"}
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  {isOpeningCompanyLead
+                    ? "Descricao enviada por quem busca abertura de empresa."
+                    : "Necessidade comercial registrada no cadastro."}
+                </p>
               </div>
-              {lead.service_types.length > 0 && (
+              {!isOpeningCompanyLead && lead.service_types.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {lead.service_types.map((serviceType) => (
                     <Badge key={serviceType} variant="outline" className="border-border/70 bg-secondary/40">

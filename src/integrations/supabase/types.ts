@@ -154,6 +154,7 @@ export type Database = {
           bank_accounts_split: string | null
           city: string | null
           cnpj: string | null
+          company_maturity: string | null
           company_or_person: string
           contact_method: Database["public"]["Enums"]["contact_method"] | null
           contact_name: string | null
@@ -196,6 +197,7 @@ export type Database = {
           bank_accounts_split?: string | null
           city?: string | null
           cnpj?: string | null
+          company_maturity?: string | null
           company_or_person: string
           contact_method?: Database["public"]["Enums"]["contact_method"] | null
           contact_name?: string | null
@@ -238,6 +240,7 @@ export type Database = {
           bank_accounts_split?: string | null
           city?: string | null
           cnpj?: string | null
+          company_maturity?: string | null
           company_or_person?: string
           contact_method?: Database["public"]["Enums"]["contact_method"] | null
           contact_name?: string | null

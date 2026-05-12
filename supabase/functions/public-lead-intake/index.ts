@@ -22,6 +22,7 @@ const sql = postgres(databaseUrl, {
 
 type IntakePayload = {
   company_or_person?: unknown;
+  company_maturity?: unknown;
   contact_name?: unknown;
   service_types?: unknown;
   phone?: unknown;
@@ -39,6 +40,7 @@ type IntakePayload = {
   bank_accounts_split?: unknown;
   financial_system?: unknown;
   accounting_pain_points?: unknown;
+  future_company_activities?: unknown;
   source?: unknown;
   notes?: unknown;
   hp_field?: unknown;
@@ -162,6 +164,7 @@ serve(async (req) => {
     const body = (await req.json().catch(() => ({}))) as IntakePayload;
 
     const companyOrPerson = normalizeOptionalString(body.company_or_person);
+    const companyMaturity = normalizeOptionalString(body.company_maturity);
     const contactName = normalizeOptionalString(body.contact_name);
     const serviceTypes = normalizeServiceTypes(body.service_types);
     const phone = normalizePhone(body.phone);
@@ -179,15 +182,25 @@ serve(async (req) => {
     const bankAccountsSplit = normalizeOptionalString(body.bank_accounts_split);
     const financialSystem = normalizeOptionalString(body.financial_system);
     const accountingPainPoints = normalizeOptionalString(body.accounting_pain_points);
+    const futureCompanyActivities = normalizeOptionalString(body.future_company_activities);
     const source = normalizeOptionalString(body.source) ?? "Formulario site";
-    const serviceDetails = normalizeOptionalString(body.notes);
+    const isOpeningCompany = companyMaturity === "opening_company";
+    const normalizedServiceTypes = isOpeningCompany
+      ? ["Legalizacao de Empresas"]
+      : serviceTypes;
+    const normalizedCompanyOrPerson = companyOrPerson ?? (contactName ? `Abertura de empresa - ${contactName}` : null);
+    const serviceDetails = isOpeningCompany ? futureCompanyActivities : null;
     const hpField = normalizeOptionalString(body.hp_field);
 
     if (hpField) {
       return json({ ok: true, ignored: true });
     }
 
-    if (!companyOrPerson) {
+    if (!companyMaturity || !["existing_company", "opening_company"].includes(companyMaturity)) {
+      return fail("Selecione se voce ja tem empresa ou quer abrir uma empresa.");
+    }
+
+    if (!normalizedCompanyOrPerson) {
       return fail("Informe a empresa ou pessoa.");
     }
 
@@ -199,68 +212,70 @@ serve(async (req) => {
       return fail("Informe um telefone valido.");
     }
 
-    if (serviceTypes.length === 0) {
-      return fail("Selecione ao menos um servico.");
-    }
-
     if (!email) {
       return fail("Informe um e-mail valido.");
     }
 
-    if (!employeeCount) {
-      return fail("Informe quantos funcionarios a empresa possui.");
-    }
+    if (isOpeningCompany) {
+      if (!futureCompanyActivities) {
+        return fail("Descreva as atividades da sua futura empresa.");
+      }
+    } else {
+      if (normalizedServiceTypes.length === 0) {
+        return fail("Selecione ao menos um servico.");
+      }
 
-    if (!cnpj) {
-      return fail("Informe o CNPJ da empresa.");
-    }
+      if (!cnpj) {
+        return fail("Informe o CNPJ da empresa.");
+      }
 
-    if (!taxRegime) {
-      return fail("Informe o regime tributario atual.");
-    }
+      if (!taxRegime) {
+        return fail("Informe o regime tributario atual.");
+      }
 
-    if (!monthlyRevenueManagerial) {
-      return fail("Informe o faturamento medio mensal gerencial.");
-    }
+      if (!monthlyRevenueManagerial) {
+        return fail("Informe o faturamento medio mensal gerencial.");
+      }
 
-    if (!monthlyRevenueFiscal) {
-      return fail("Informe o faturamento medio mensal fiscal.");
-    }
+      if (!monthlyRevenueFiscal) {
+        return fail("Informe o faturamento medio mensal fiscal.");
+      }
 
-    if (!monthlyInvoiceCount) {
-      return fail("Informe a quantidade media de NF emitidas por mes.");
-    }
+      if (!monthlyInvoiceCount) {
+        return fail("Informe a quantidade media de NF emitidas por mes.");
+      }
 
-    if (!employeeCountClt) {
-      return fail("Informe a quantidade media de funcionarios CLT.");
-    }
+      if (!employeeCountClt) {
+        return fail("Informe a quantidade media de funcionarios CLT.");
+      }
 
-    if (!employeeCountPj) {
-      return fail("Informe a quantidade media de profissionais PJ.");
-    }
+      if (!employeeCountPj) {
+        return fail("Informe a quantidade media de profissionais PJ.");
+      }
 
-    if (!payrollGrossValue) {
-      return fail("Informe o valor bruto medio da folha de pagamentos.");
-    }
+      if (!payrollGrossValue) {
+        return fail("Informe o valor bruto medio da folha de pagamentos.");
+      }
 
-    if (!bankAccountCount) {
-      return fail("Informe quantas contas bancarias a empresa possui.");
-    }
+      if (!bankAccountCount) {
+        return fail("Informe quantas contas bancarias a empresa possui.");
+      }
 
-    if (!bankAccountsSplit) {
-      return fail("Informe se as contas bancarias sao separadas por projeto ou centro de custo.");
-    }
+      if (!bankAccountsSplit) {
+        return fail("Informe se as contas bancarias sao separadas por projeto ou centro de custo.");
+      }
 
-    if (!financialSystem) {
-      return fail("Informe qual sistema financeiro a empresa utiliza.");
-    }
+      if (!financialSystem) {
+        return fail("Informe qual sistema financeiro a empresa utiliza.");
+      }
 
-    if (!accountingPainPoints) {
-      return fail("Informe as principais dores contabeis e a motivacao por trocar.");
+      if (!accountingPainPoints) {
+        return fail("Informe as principais dores contabeis e a motivacao por trocar.");
+      }
     }
 
     const notes = buildNotes({
-      notes: serviceDetails,
+      notes: normalizeOptionalString(body.notes),
       utm_source: normalizeOptionalString(body.utm_source),
       utm_medium: normalizeOptionalString(body.utm_medium),
       utm_campaign: normalizeOptionalString(body.utm_campaign),
@@ -303,6 +318,7 @@ serve(async (req) => {
       insert into public.leads (
         funnel_id,
         company_or_person,
+        company_maturity,
         contact_name,
         phone,
         email,
@@ -329,30 +345,31 @@ serve(async (req) => {
         service_details
       ) values (
         ${funnelId},
-        ${companyOrPerson},
+        ${normalizedCompanyOrPerson},
+        ${companyMaturity},
         ${contactName},
         ${phone},
         ${email},
-        ${employeeCount},
-        ${employeeCountClt},
-        ${employeeCountPj},
-        ${cnpj},
-        ${taxRegime},
-        ${monthlyRevenueManagerial},
-        ${monthlyRevenueFiscal},
-        ${monthlyInvoiceCount},
-        ${payrollGrossValue},
-        ${bankAccountCount},
-        ${bankAccountsSplit},
-        ${financialSystem},
-        ${accountingPainPoints},
+        ${isOpeningCompany ? null : employeeCount},
+        ${isOpeningCompany ? null : employeeCountClt},
+        ${isOpeningCompany ? null : employeeCountPj},
+        ${isOpeningCompany ? null : cnpj},
+        ${isOpeningCompany ? null : taxRegime},
+        ${isOpeningCompany ? null : monthlyRevenueManagerial},
+        ${isOpeningCompany ? null : monthlyRevenueFiscal},
+        ${isOpeningCompany ? null : monthlyInvoiceCount},
+        ${isOpeningCompany ? null : payrollGrossValue},
+        ${isOpeningCompany ? null : bankAccountCount},
+        ${isOpeningCompany ? null : bankAccountsSplit},
+        ${isOpeningCompany ? null : financialSystem},
+        ${isOpeningCompany ? null : accountingPainPoints},
         ${source},
         0,
         'morno',
         ${stageId},
         false,
         ${notes},
-        ${serviceTypes},
+        ${normalizedServiceTypes},
         ${serviceDetails}
       )
       returning id, company_or_person

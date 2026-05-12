@@ -65,6 +65,7 @@ const allowedLeadFields = new Set([
   "segment_other",
   "city",
   "uf",
+  "company_maturity",
   "owner_id",
   "estimated_value",
   "temperature",
@@ -210,6 +211,9 @@ const prepareLeadPayload = (
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "uf")) {
     normalized.uf = normalizeOptionalString(normalized.uf);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "company_maturity")) {
+    normalized.company_maturity = normalizeOptionalString(normalized.company_maturity);
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "owner_id")) {
     normalized.owner_id = normalizeOptionalString(normalized.owner_id);
@@ -556,7 +560,7 @@ serve(async (req) => {
           cnpj, source, segment, segment_other, city, uf, owner_id, estimated_value, temperature, stage_id,
           has_been_contacted, contact_method, next_follow_up, notes, additional_contacts, tax_regime,
           monthly_revenue_managerial, monthly_revenue_fiscal, monthly_invoice_count, payroll_gross_value,
-          bank_account_count, bank_accounts_split, financial_system, accounting_pain_points,
+          bank_account_count, bank_accounts_split, financial_system, accounting_pain_points, company_maturity,
           service_types, service_details, position, created_by, updated_by
         ) values (
           ${lead.funnel_id as string}, ${lead.company_or_person as string}, ${lead.contact_name ?? null}, ${lead.phone ?? null},
@@ -568,7 +572,8 @@ serve(async (req) => {
           ${lead.additional_contacts ?? []}, ${lead.tax_regime ?? null}, ${lead.monthly_revenue_managerial ?? null},
           ${lead.monthly_revenue_fiscal ?? null}, ${lead.monthly_invoice_count ?? null}, ${lead.payroll_gross_value ?? null},
           ${lead.bank_account_count ?? null}, ${lead.bank_accounts_split ?? null}, ${lead.financial_system ?? null},
-          ${lead.accounting_pain_points ?? null}, ${lead.service_types ?? []}, ${lead.service_details ?? null},
+          ${lead.accounting_pain_points ?? null}, ${lead.company_maturity ?? null}, ${lead.service_types ?? []},
+          ${lead.service_details ?? null},
           ${lead.position ?? 0}, ${userId}, ${userId}
         )
         returning *

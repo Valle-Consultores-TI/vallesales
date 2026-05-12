@@ -25,10 +25,6 @@ export const TAX_REGIME_OPTIONS = [
   "Simples Nacional",
   "Lucro Presumido",
   "Lucro Real",
-  "Lucro Arbitrado",
-  "Produtor Rural",
-  "Entidade Imune ou Isenta",
-  "Regime Especial de Tributacao",
 ] as const;
 
 export const SERVICE_TYPE_OPTIONS = [
@@ -37,12 +33,19 @@ export const SERVICE_TYPE_OPTIONS = [
   "Gestao Tributaria",
   "Legalizacao de Empresas",
   "BPO Financeiro",
-  "Coworking e Sede Virtual",
-  "Coworking - Escritório Virtual",
-  "Coworking - Sala Privativa",
-  "Coworking - Estação Compartilhada",
-  "Coworking - Salas de Reunião",
 ] as const;
+
+export const COMPANY_MATURITY_OPTIONS = [
+  { value: "existing_company", label: "Ja tenho uma empresa" },
+  { value: "opening_company", label: "Quero abrir uma empresa" },
+] as const;
+
+export type CompanyMaturity = (typeof COMPANY_MATURITY_OPTIONS)[number]["value"];
+
+export const COMPANY_MATURITY_LABELS: Record<CompanyMaturity, string> = {
+  existing_company: "Ja tenho uma empresa",
+  opening_company: "Quero abrir uma empresa",
+};
 
 export type LeadAdditionalContact = {
   id: string;
