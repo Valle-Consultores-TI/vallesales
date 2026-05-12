@@ -11,6 +11,7 @@ import { getLeadPriority, needsActionToday, priorityMeta } from "@/lib/priority"
 
 interface Props {
   lead: Lead;
+  isLost?: boolean;
   profiles: Profile[];
   onClick: () => void;
   onDragStart: (e: React.DragEvent) => void;
@@ -40,7 +41,7 @@ function getFollowUpStatus(date: string | null | undefined): FollowUpStatus {
   return "futuro";
 }
 
-export const LeadCard = ({ lead, profiles, onClick, onDragStart, draggable = true }: Props) => {
+export const LeadCard = ({ lead, isLost = false, profiles, onClick, onDragStart, draggable = true }: Props) => {
   const owner = profiles.find((p) => p.id === lead.owner_id);
   const followUpStatus = getFollowUpStatus(lead.next_follow_up);
   const isOverdue = followUpStatus === "atrasado";
@@ -49,6 +50,7 @@ export const LeadCard = ({ lead, profiles, onClick, onDragStart, draggable = tru
   const isHot = lead.temperature === "quente";
   const priority = getLeadPriority(lead);
   const actionToday = needsActionToday(lead);
+  const lossReason = lead.loss_reason?.trim();
 
   return (
     <Card
@@ -155,6 +157,18 @@ export const LeadCard = ({ lead, profiles, onClick, onDragStart, draggable = tru
               {isToday && "Hoje · "}
               {formatDate(lead.next_follow_up)}
             </span>
+          </div>
+        )}
+
+        {isLost && lossReason && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/8 px-2.5 py-2">
+            <div className="mb-1 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-destructive">
+              <AlertTriangle className="h-3 w-3" />
+              Motivo da perda
+            </div>
+            <p className="line-clamp-3 text-[11px] leading-relaxed text-foreground">
+              {lossReason}
+            </p>
           </div>
         )}
 

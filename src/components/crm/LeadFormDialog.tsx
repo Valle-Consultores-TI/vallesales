@@ -285,6 +285,7 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
       has_been_contacted: form.has_been_contacted,
       contact_method: (form.contact_method || null) as never,
       next_follow_up: form.next_follow_up || null,
+      loss_reason: lostReasonText?.trim() || (lead?.loss_reason ?? null),
       notes: form.notes.trim() || null,
       additional_contacts: serializeAdditionalContacts(form.additional_contacts),
       tax_regime: form.tax_regime || null,

@@ -73,6 +73,7 @@ const allowedLeadFields = new Set([
   "has_been_contacted",
   "contact_method",
   "next_follow_up",
+  "loss_reason",
   "notes",
   "additional_contacts",
   "tax_regime",
@@ -229,6 +230,9 @@ const prepareLeadPayload = (
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "notes")) {
     normalized.notes = normalizeOptionalString(normalized.notes);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "loss_reason")) {
+    normalized.loss_reason = normalizeOptionalString(normalized.loss_reason);
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "tax_regime")) {
     normalized.tax_regime = normalizeOptionalString(normalized.tax_regime);
@@ -558,7 +562,7 @@ serve(async (req) => {
         insert into public.leads (
           funnel_id, company_or_person, contact_name, phone, email, employee_count, employee_count_clt, employee_count_pj,
           cnpj, source, segment, segment_other, city, uf, owner_id, estimated_value, temperature, stage_id,
-          has_been_contacted, contact_method, next_follow_up, notes, additional_contacts, tax_regime,
+          has_been_contacted, contact_method, next_follow_up, loss_reason, notes, additional_contacts, tax_regime,
           monthly_revenue_managerial, monthly_revenue_fiscal, monthly_invoice_count, payroll_gross_value,
           bank_account_count, bank_accounts_split, financial_system, accounting_pain_points, company_maturity,
           service_types, service_details, position, created_by, updated_by
@@ -568,7 +572,7 @@ serve(async (req) => {
           ${lead.cnpj ?? null}, ${lead.source ?? null}, ${lead.segment ?? null}, ${lead.segment_other ?? null},
           ${lead.city ?? null}, ${lead.uf ?? null}, ${lead.owner_id ?? null}, ${lead.estimated_value ?? 0},
           ${lead.temperature ?? "morno"}, ${lead.stage_id as string}, ${lead.has_been_contacted ?? false},
-          ${lead.contact_method ?? null}, ${lead.next_follow_up ?? null}, ${lead.notes ?? null},
+          ${lead.contact_method ?? null}, ${lead.next_follow_up ?? null}, ${lead.loss_reason ?? null}, ${lead.notes ?? null},
           ${lead.additional_contacts ?? []}, ${lead.tax_regime ?? null}, ${lead.monthly_revenue_managerial ?? null},
           ${lead.monthly_revenue_fiscal ?? null}, ${lead.monthly_invoice_count ?? null}, ${lead.payroll_gross_value ?? null},
           ${lead.bank_account_count ?? null}, ${lead.bank_accounts_split ?? null}, ${lead.financial_system ?? null},

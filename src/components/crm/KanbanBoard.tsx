@@ -104,7 +104,11 @@ export const KanbanBoard = ({
   }, [stages, leadsByStage]);
 
   const finalizeLeadStageChange = async (lead: Lead, stageId: string, lostReasonText?: string) => {
-    await update.mutateAsync({ id: lead.id, stage_id: stageId });
+    await update.mutateAsync({
+      id: lead.id,
+      stage_id: stageId,
+      loss_reason: lostReasonText?.trim() || undefined,
+    });
 
     if (lostReasonText?.trim()) {
       await addLeadNoteEntry({
@@ -404,6 +408,7 @@ export const KanbanBoard = ({
                     <div key={lead.id} className="animate-fade-in-up">
                       <LeadCard
                         lead={lead}
+                        isLost={stage.is_lost}
                         profiles={profiles}
                         onClick={() => onSelectLead(lead)}
                         draggable={canMoveLead(lead)}

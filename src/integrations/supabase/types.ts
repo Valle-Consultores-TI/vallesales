@@ -169,6 +169,7 @@ export type Database = {
           funnel_id: string
           has_been_contacted: boolean
           id: string
+          loss_reason: string | null
           monthly_invoice_count: string | null
           monthly_revenue_fiscal: string | null
           monthly_revenue_managerial: string | null
@@ -212,6 +213,7 @@ export type Database = {
           funnel_id: string
           has_been_contacted?: boolean
           id?: string
+          loss_reason?: string | null
           monthly_invoice_count?: string | null
           monthly_revenue_fiscal?: string | null
           monthly_revenue_managerial?: string | null
@@ -255,6 +257,7 @@ export type Database = {
           funnel_id?: string
           has_been_contacted?: boolean
           id?: string
+          loss_reason?: string | null
           monthly_invoice_count?: string | null
           monthly_revenue_fiscal?: string | null
           monthly_revenue_managerial?: string | null
