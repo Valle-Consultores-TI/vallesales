@@ -27,6 +27,18 @@ type IntakePayload = {
   phone?: unknown;
   email?: unknown;
   employee_count?: unknown;
+  employee_count_clt?: unknown;
+  employee_count_pj?: unknown;
+  cnpj?: unknown;
+  tax_regime?: unknown;
+  monthly_revenue_managerial?: unknown;
+  monthly_revenue_fiscal?: unknown;
+  monthly_invoice_count?: unknown;
+  payroll_gross_value?: unknown;
+  bank_account_count?: unknown;
+  bank_accounts_split?: unknown;
+  financial_system?: unknown;
+  accounting_pain_points?: unknown;
   source?: unknown;
   notes?: unknown;
   hp_field?: unknown;
@@ -37,6 +49,10 @@ type IntakePayload = {
   utm_content?: unknown;
   landing_path?: unknown;
   referrer?: unknown;
+};
+
+type RequiredPick<T, K extends keyof T> = {
+  [P in K]: string | null;
 };
 
 const json = (body: unknown, status = 200) =>
@@ -77,13 +93,10 @@ const normalizeServiceTypes = (value: unknown) => {
   );
 };
 
-const buildNotes = (payload: RequiredPick<IntakePayload, "employee_count" | "notes" | "utm_source" | "utm_medium" | "utm_campaign" | "utm_term" | "utm_content" | "landing_path" | "referrer">) => {
+const buildNotes = (
+  payload: RequiredPick<IntakePayload, "notes" | "utm_source" | "utm_medium" | "utm_campaign" | "utm_term" | "utm_content" | "landing_path" | "referrer">,
+) => {
   const blocks: string[] = [];
-
-  blocks.push([
-    "Captacao publica",
-    `Quantidade de funcionarios: ${payload.employee_count ?? "-"}`,
-  ].join("\n"));
 
   if (payload.notes) {
     blocks.push([
@@ -103,14 +116,10 @@ const buildNotes = (payload: RequiredPick<IntakePayload, "employee_count" | "not
   ].filter(Boolean) as string[];
 
   if (trackingLines.length > 0) {
-    blocks.push(["Tracking", ...trackingLines].join("\n"));
+    blocks.push(["Captacao publica", "Tracking", ...trackingLines].join("\n"));
   }
 
   return blocks.length > 0 ? blocks.join("\n\n") : null;
-};
-
-type RequiredPick<T, K extends keyof T> = {
-  [P in K]: string | null;
 };
 
 const getDefaultFunnelAndStage = async () => {
@@ -152,12 +161,24 @@ serve(async (req) => {
   try {
     const body = (await req.json().catch(() => ({}))) as IntakePayload;
 
-    const company_or_person = normalizeOptionalString(body.company_or_person);
-    const contact_name = normalizeOptionalString(body.contact_name);
+    const companyOrPerson = normalizeOptionalString(body.company_or_person);
+    const contactName = normalizeOptionalString(body.contact_name);
     const serviceTypes = normalizeServiceTypes(body.service_types);
     const phone = normalizePhone(body.phone);
     const email = normalizeOptionalString(body.email);
     const employeeCount = normalizeOptionalString(body.employee_count);
+    const employeeCountClt = normalizeOptionalString(body.employee_count_clt);
+    const employeeCountPj = normalizeOptionalString(body.employee_count_pj);
+    const cnpj = normalizeOptionalString(body.cnpj);
+    const taxRegime = normalizeOptionalString(body.tax_regime);
+    const monthlyRevenueManagerial = normalizeOptionalString(body.monthly_revenue_managerial);
+    const monthlyRevenueFiscal = normalizeOptionalString(body.monthly_revenue_fiscal);
+    const monthlyInvoiceCount = normalizeOptionalString(body.monthly_invoice_count);
+    const payrollGrossValue = normalizeOptionalString(body.payroll_gross_value);
+    const bankAccountCount = normalizeOptionalString(body.bank_account_count);
+    const bankAccountsSplit = normalizeOptionalString(body.bank_accounts_split);
+    const financialSystem = normalizeOptionalString(body.financial_system);
+    const accountingPainPoints = normalizeOptionalString(body.accounting_pain_points);
     const source = normalizeOptionalString(body.source) ?? "Formulario site";
     const serviceDetails = normalizeOptionalString(body.notes);
     const hpField = normalizeOptionalString(body.hp_field);
@@ -166,11 +187,11 @@ serve(async (req) => {
       return json({ ok: true, ignored: true });
     }
 
-    if (!company_or_person) {
+    if (!companyOrPerson) {
       return fail("Informe a empresa ou pessoa.");
     }
 
-    if (!contact_name) {
+    if (!contactName) {
       return fail("Informe o nome do contato.");
     }
 
@@ -187,11 +208,58 @@ serve(async (req) => {
     }
 
     if (!employeeCount) {
-      return fail("Informe quantos funcionarios voce possui.");
+      return fail("Informe quantos funcionarios a empresa possui.");
+    }
+
+    if (!cnpj) {
+      return fail("Informe o CNPJ da empresa.");
+    }
+
+    if (!taxRegime) {
+      return fail("Informe o regime tributario atual.");
+    }
+
+    if (!monthlyRevenueManagerial) {
+      return fail("Informe o faturamento medio mensal gerencial.");
+    }
+
+    if (!monthlyRevenueFiscal) {
+      return fail("Informe o faturamento medio mensal fiscal.");
+    }
+
+    if (!monthlyInvoiceCount) {
+      return fail("Informe a quantidade media de NF emitidas por mes.");
+    }
+
+    if (!employeeCountClt) {
+      return fail("Informe a quantidade media de funcionarios CLT.");
+    }
+
+    if (!employeeCountPj) {
+      return fail("Informe a quantidade media de profissionais PJ.");
+    }
+
+    if (!payrollGrossValue) {
+      return fail("Informe o valor bruto medio da folha de pagamentos.");
+    }
+
+    if (!bankAccountCount) {
+      return fail("Informe quantas contas bancarias a empresa possui.");
+    }
+
+    if (!bankAccountsSplit) {
+      return fail("Informe se as contas bancarias sao separadas por projeto ou centro de custo.");
+    }
+
+    if (!financialSystem) {
+      return fail("Informe qual sistema financeiro a empresa utiliza.");
+    }
+
+    if (!accountingPainPoints) {
+      return fail("Informe as principais dores contabeis e a motivacao por trocar.");
     }
 
     const notes = buildNotes({
-      employee_count: employeeCount,
       notes: serviceDetails,
       utm_source: normalizeOptionalString(body.utm_source),
       utm_medium: normalizeOptionalString(body.utm_medium),
@@ -228,7 +296,7 @@ serve(async (req) => {
     const [recentDuplicate] = duplicateRows;
 
     if (recentDuplicate) {
-      return json({ ok: true, duplicate: true });
+      return json({ ok: true, duplicate: true, lead_id: recentDuplicate.id });
     }
 
     const [createdLead] = await sql`
@@ -238,6 +306,19 @@ serve(async (req) => {
         contact_name,
         phone,
         email,
+        employee_count,
+        employee_count_clt,
+        employee_count_pj,
+        cnpj,
+        tax_regime,
+        monthly_revenue_managerial,
+        monthly_revenue_fiscal,
+        monthly_invoice_count,
+        payroll_gross_value,
+        bank_account_count,
+        bank_accounts_split,
+        financial_system,
+        accounting_pain_points,
         source,
         estimated_value,
         temperature,
@@ -248,10 +329,23 @@ serve(async (req) => {
         service_details
       ) values (
         ${funnelId},
-        ${company_or_person},
-        ${contact_name},
+        ${companyOrPerson},
+        ${contactName},
         ${phone},
         ${email},
+        ${employeeCount},
+        ${employeeCountClt},
+        ${employeeCountPj},
+        ${cnpj},
+        ${taxRegime},
+        ${monthlyRevenueManagerial},
+        ${monthlyRevenueFiscal},
+        ${monthlyInvoiceCount},
+        ${payrollGrossValue},
+        ${bankAccountCount},
+        ${bankAccountsSplit},
+        ${financialSystem},
+        ${accountingPainPoints},
         ${source},
         0,
         'morno',

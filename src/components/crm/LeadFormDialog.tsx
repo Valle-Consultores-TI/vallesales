@@ -7,12 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useAssignableProfiles, useCreateLead, useProfiles, useStages, useUpdateLead } from "@/hooks/useLeads";
+import { useAssignableProfiles, useCreateLead, useProfiles, useStages, useUpdateLead, uploadLeadAttachmentFile } from "@/hooks/useLeads";
 import { useActiveFunnel } from "@/hooks/useActiveFunnel";
 import { useAuth } from "@/hooks/useAuth";
 import { Lead } from "@/types/crm";
 import { CONTACT_METHOD_OPTIONS, SOURCE_OPTIONS, TEMPERATURE_OPTIONS, UF_OPTIONS } from "@/lib/constants";
 import {
+  formatCnpj,
   formatPhone,
   isValidLeadPhone,
   LeadAdditionalContact,
@@ -26,6 +27,8 @@ import {
 } from "@/lib/lead-form";
 import { Loader2, Plus, Trash2, UserCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface Props {
   open: boolean;
@@ -40,6 +43,10 @@ type FormState = {
   contact_name: string;
   phone: string;
   email: string;
+  cnpj: string;
+  employee_count: string;
+  employee_count_clt: string;
+  employee_count_pj: string;
   source: string;
   indication_by: string;
   segment: string;
@@ -56,6 +63,14 @@ type FormState = {
   notes: string;
   additional_contacts: LeadAdditionalContact[];
   tax_regime: string;
+  monthly_revenue_managerial: string;
+  monthly_revenue_fiscal: string;
+  monthly_invoice_count: string;
+  payroll_gross_value: string;
+  bank_account_count: string;
+  bank_accounts_split: string;
+  financial_system: string;
+  accounting_pain_points: string;
   service_types: string[];
   service_details: string;
 };
@@ -105,6 +120,10 @@ const buildInitialForm = (
     contact_name: lead?.contact_name ?? "",
     phone: lead?.phone ?? "",
     email: lead?.email ?? "",
+    cnpj: lead?.cnpj ?? "",
+    employee_count: lead?.employee_count ?? "",
+    employee_count_clt: lead?.employee_count_clt ?? "",
+    employee_count_pj: lead?.employee_count_pj ?? "",
     source: sourceState.source,
     indication_by: sourceState.indication_by,
     segment: segmentState.segment,
@@ -121,6 +140,14 @@ const buildInitialForm = (
     notes: lead?.notes ?? "",
     additional_contacts: parseAdditionalContacts(lead?.additional_contacts),
     tax_regime: lead?.tax_regime ?? "",
+    monthly_revenue_managerial: lead?.monthly_revenue_managerial ?? "",
+    monthly_revenue_fiscal: lead?.monthly_revenue_fiscal ?? "",
+    monthly_invoice_count: lead?.monthly_invoice_count ?? "",
+    payroll_gross_value: lead?.payroll_gross_value ?? "",
+    bank_account_count: lead?.bank_account_count ?? "",
+    bank_accounts_split: lead?.bank_accounts_split ?? "",
+    financial_system: lead?.financial_system ?? "",
+    accounting_pain_points: lead?.accounting_pain_points ?? "",
     service_types: lead?.service_types ?? [],
     service_details: lead?.service_details ?? "",
   };
@@ -134,6 +161,7 @@ const createEmptyAdditionalContact = (): LeadAdditionalContact => ({
 });
 
 export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Props) => {
+  const qc = useQueryClient();
   const { activeFunnelId, funnels } = useActiveFunnel();
   const { data: profiles = [] } = useProfiles();
   const [form, setForm] = useState<FormState>(() => buildInitialForm(lead, defaultStageId, activeFunnelId));
@@ -143,13 +171,21 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
   const create = useCreateLead();
   const update = useUpdateLead();
   const firstFieldRef = useRef<HTMLInputElement>(null);
+  const payrollReportInputRef = useRef<HTMLInputElement>(null);
+  const trialBalanceInputRef = useRef<HTMLInputElement>(null);
 
   const [errors, setErrors] = useState<FormErrors>({});
+  const [payrollReportFile, setPayrollReportFile] = useState<File | null>(null);
+  const [trialBalanceFile, setTrialBalanceFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setForm(buildInitialForm(lead, defaultStageId, activeFunnelId));
     setErrors({});
+    setPayrollReportFile(null);
+    setTrialBalanceFile(null);
+    if (payrollReportInputRef.current) payrollReportInputRef.current.value = "";
+    if (trialBalanceInputRef.current) trialBalanceInputRef.current.value = "";
     setTimeout(() => firstFieldRef.current?.focus(), 50);
   }, [activeFunnelId, defaultStageId, lead, open]);
 
@@ -232,6 +268,10 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
       contact_name: form.contact_name.trim(),
       phone: formatPhone(form.phone),
       email: form.email.trim() || null,
+      cnpj: form.cnpj.trim() || null,
+      employee_count: form.employee_count.trim() || null,
+      employee_count_clt: form.employee_count_clt.trim() || null,
+      employee_count_pj: form.employee_count_pj.trim() || null,
       source: serializeLeadSource(form.source, form.indication_by),
       segment: form.segment || null,
       segment_other: form.segment === "Outro" ? form.segment_other.trim() || null : null,
@@ -247,14 +287,65 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
       notes: form.notes.trim() || null,
       additional_contacts: serializeAdditionalContacts(form.additional_contacts),
       tax_regime: form.tax_regime || null,
+      monthly_revenue_managerial: form.monthly_revenue_managerial.trim() || null,
+      monthly_revenue_fiscal: form.monthly_revenue_fiscal.trim() || null,
+      monthly_invoice_count: form.monthly_invoice_count.trim() || null,
+      payroll_gross_value: form.payroll_gross_value.trim() || null,
+      bank_account_count: form.bank_account_count.trim() || null,
+      bank_accounts_split: form.bank_accounts_split || null,
+      financial_system: form.financial_system.trim() || null,
+      accounting_pain_points: form.accounting_pain_points.trim() || null,
       service_types: form.service_types,
       service_details: form.service_details.trim() || null,
     };
 
-    if (lead) {
-      await update.mutateAsync({ id: lead.id, ...payload });
-    } else {
-      await create.mutateAsync(payload);
+    const savedLead = lead
+      ? await update.mutateAsync({ id: lead.id, ...payload })
+      : await create.mutateAsync(payload);
+
+    const pendingUploads = [
+      payrollReportFile
+        ? {
+            file: payrollReportFile,
+            displayName: `Relatorio Geral da Folha - ${payrollReportFile.name}`,
+            activityDescription: `Anexo enviado no cadastro: Relatorio Geral da Folha - ${payrollReportFile.name}`,
+          }
+        : null,
+      trialBalanceFile
+        ? {
+            file: trialBalanceFile,
+            displayName: `Balancete Mais Recente - ${trialBalanceFile.name}`,
+            activityDescription: `Anexo enviado no cadastro: Balancete Mais Recente - ${trialBalanceFile.name}`,
+          }
+        : null,
+    ].filter((item): item is { file: File; displayName: string; activityDescription: string } => item !== null);
+
+    if (pendingUploads.length > 0) {
+      const failedUploads: string[] = [];
+
+      for (const uploadItem of pendingUploads) {
+        try {
+          await uploadLeadAttachmentFile({
+            leadId: savedLead.id,
+            file: uploadItem.file,
+            userId: user?.id,
+            displayName: uploadItem.displayName,
+            activityDescription: uploadItem.activityDescription,
+          });
+        } catch (error) {
+          failedUploads.push(error instanceof Error ? error.message : "Falha ao enviar anexo.");
+        }
+      }
+
+      qc.invalidateQueries({ queryKey: ["lead_attachments", savedLead.id] });
+      qc.invalidateQueries({ queryKey: ["lead_activities", savedLead.id] });
+      qc.invalidateQueries({ queryKey: ["lead", savedLead.id] });
+      qc.invalidateQueries({ queryKey: ["leads"] });
+      qc.invalidateQueries({ queryKey: ["crm_notifications_feed"] });
+
+      if (failedUploads.length > 0) {
+        toast.error("O lead foi salvo, mas um ou mais anexos nao puderam ser enviados.");
+      }
     }
 
     onOpenChange(false);
@@ -415,6 +506,26 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
                     ))}
                   </SelectContent>
                 </Select>
+              </FieldBlock>
+
+              <FieldBlock>
+                <Label>CNPJ</Label>
+                <Input
+                  inputMode="numeric"
+                  placeholder="00.000.000/0000-00"
+                  value={form.cnpj}
+                  onChange={(event) => patchForm({ cnpj: formatCnpj(event.target.value) })}
+                />
+              </FieldBlock>
+
+              <FieldBlock>
+                <Label>Quantidade total de funcionarios</Label>
+                <Input
+                  inputMode="numeric"
+                  placeholder="Ex.: 12"
+                  value={form.employee_count}
+                  onChange={(event) => patchForm({ employee_count: event.target.value })}
+                />
               </FieldBlock>
 
               {form.source === "Indicacao" && (
@@ -677,12 +788,12 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
           </FormSection>
 
           <FormSection
-            title="Servico necessario"
-            description="Registre o regime tributario, os servicos desejados e os detalhes da necessidade."
+            title="Diagnostico contabil e servicos"
+            description="Registre o contexto financeiro, tributario e os servicos desejados pelo lead."
           >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <FieldBlock>
-                <Label>Regime tributario</Label>
+                <Label>Regime tributario atual</Label>
                 <Select value={form.tax_regime || undefined} onValueChange={(value) => patchForm({ tax_regime: value })}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione" />
@@ -695,6 +806,101 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
                     ))}
                   </SelectContent>
                 </Select>
+              </FieldBlock>
+
+              <FieldBlock>
+                <Label>Faturamento medio mensal gerencial</Label>
+                <Input
+                  inputMode="decimal"
+                  placeholder="Ex.: 150000"
+                  value={form.monthly_revenue_managerial}
+                  onChange={(event) => patchForm({ monthly_revenue_managerial: event.target.value })}
+                />
+              </FieldBlock>
+
+              <FieldBlock>
+                <Label>Faturamento medio mensal fiscal</Label>
+                <Input
+                  inputMode="decimal"
+                  placeholder="Ex.: 140000"
+                  value={form.monthly_revenue_fiscal}
+                  onChange={(event) => patchForm({ monthly_revenue_fiscal: event.target.value })}
+                />
+              </FieldBlock>
+
+              <FieldBlock>
+                <Label>Quantidade media de NF por mes</Label>
+                <Input
+                  inputMode="numeric"
+                  placeholder="Ex.: 85"
+                  value={form.monthly_invoice_count}
+                  onChange={(event) => patchForm({ monthly_invoice_count: event.target.value })}
+                />
+              </FieldBlock>
+
+              <FieldBlock>
+                <Label>Funcionarios CLT</Label>
+                <Input
+                  inputMode="numeric"
+                  placeholder="Ex.: 10"
+                  value={form.employee_count_clt}
+                  onChange={(event) => patchForm({ employee_count_clt: event.target.value })}
+                />
+              </FieldBlock>
+
+              <FieldBlock>
+                <Label>Profissionais PJ</Label>
+                <Input
+                  inputMode="numeric"
+                  placeholder="Ex.: 4"
+                  value={form.employee_count_pj}
+                  onChange={(event) => patchForm({ employee_count_pj: event.target.value })}
+                />
+              </FieldBlock>
+
+              <FieldBlock>
+                <Label>Valor bruto medio da folha</Label>
+                <Input
+                  inputMode="decimal"
+                  placeholder="Ex.: 58000"
+                  value={form.payroll_gross_value}
+                  onChange={(event) => patchForm({ payroll_gross_value: event.target.value })}
+                />
+              </FieldBlock>
+
+              <FieldBlock>
+                <Label>Quantidade de contas bancarias</Label>
+                <Input
+                  inputMode="numeric"
+                  placeholder="Ex.: 3"
+                  value={form.bank_account_count}
+                  onChange={(event) => patchForm({ bank_account_count: event.target.value })}
+                />
+              </FieldBlock>
+
+              <FieldBlock>
+                <Label>Contas separadas por projeto/centro de custo?</Label>
+                <Select
+                  value={form.bank_accounts_split || undefined}
+                  onValueChange={(value) => patchForm({ bank_accounts_split: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Sim">Sim</SelectItem>
+                    <SelectItem value="Nao">Nao</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FieldBlock>
+
+              <FieldBlock>
+                <Label>Sistema financeiro utilizado</Label>
+                <Input
+                  placeholder="Ex.: Omie, Conta Azul, ERP proprio"
+                  value={form.financial_system}
+                  onChange={(event) => patchForm({ financial_system: event.target.value })}
+                />
               </FieldBlock>
 
               <FieldBlock className="md:col-span-2">
@@ -729,6 +935,42 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
                   value={form.service_details}
                   onChange={(event) => patchForm({ service_details: event.target.value })}
                 />
+              </FieldBlock>
+
+              <FieldBlock className="md:col-span-2">
+                <Label>Principais dores e motivacao para trocar de contabilidade</Label>
+                <Textarea
+                  rows={4}
+                  placeholder="Descreva os principais problemas atuais, insatisfacoes e motivacoes para mudanca."
+                  value={form.accounting_pain_points}
+                  onChange={(event) => patchForm({ accounting_pain_points: event.target.value })}
+                />
+              </FieldBlock>
+
+              <FieldBlock className="md:col-span-2">
+                <Label>Relatorio Geral da Folha do ultimo mes</Label>
+                <Input
+                  ref={payrollReportInputRef}
+                  type="file"
+                  accept=".pdf,.xls,.xlsx,.csv,.png,.jpg,.jpeg"
+                  onChange={(event) => setPayrollReportFile(event.target.files?.[0] ?? null)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Se voce selecionar um arquivo, ele sera anexado ao lead assim que o cadastro for salvo.
+                </p>
+              </FieldBlock>
+
+              <FieldBlock className="md:col-span-2">
+                <Label>Balancete mais recente</Label>
+                <Input
+                  ref={trialBalanceInputRef}
+                  type="file"
+                  accept=".pdf,.xls,.xlsx,.csv,.png,.jpg,.jpeg"
+                  onChange={(event) => setTrialBalanceFile(event.target.files?.[0] ?? null)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  O documento sera anexado ao lead no mesmo fluxo de salvamento.
+                </p>
               </FieldBlock>
             </div>
           </FormSection>

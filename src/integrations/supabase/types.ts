@@ -148,23 +148,35 @@ export type Database = {
       }
       leads: {
         Row: {
+          accounting_pain_points: string | null
           additional_contacts: Json
+          bank_account_count: string | null
+          bank_accounts_split: string | null
           city: string | null
+          cnpj: string | null
           company_or_person: string
           contact_method: Database["public"]["Enums"]["contact_method"] | null
           contact_name: string | null
           created_at: string
           created_by: string | null
+          employee_count: string | null
+          employee_count_clt: string | null
+          employee_count_pj: string | null
           email: string | null
           estimated_value: number | null
+          financial_system: string | null
           funnel_id: string
           has_been_contacted: boolean
           id: string
+          monthly_invoice_count: string | null
+          monthly_revenue_fiscal: string | null
+          monthly_revenue_managerial: string | null
           next_follow_up: string | null
           notes: string | null
           owner_id: string | null
           phone: string | null
           position: number
+          payroll_gross_value: string | null
           segment: string | null
           segment_other: string | null
           source: string | null
@@ -178,23 +190,35 @@ export type Database = {
           updated_by: string | null
         }
         Insert: {
+          accounting_pain_points?: string | null
           additional_contacts?: Json
+          bank_account_count?: string | null
+          bank_accounts_split?: string | null
           city?: string | null
+          cnpj?: string | null
           company_or_person: string
           contact_method?: Database["public"]["Enums"]["contact_method"] | null
           contact_name?: string | null
           created_at?: string
           created_by?: string | null
+          employee_count?: string | null
+          employee_count_clt?: string | null
+          employee_count_pj?: string | null
           email?: string | null
           estimated_value?: number | null
+          financial_system?: string | null
           funnel_id: string
           has_been_contacted?: boolean
           id?: string
+          monthly_invoice_count?: string | null
+          monthly_revenue_fiscal?: string | null
+          monthly_revenue_managerial?: string | null
           next_follow_up?: string | null
           notes?: string | null
           owner_id?: string | null
           phone?: string | null
           position?: number
+          payroll_gross_value?: string | null
           segment?: string | null
           segment_other?: string | null
           source?: string | null
@@ -208,23 +232,35 @@ export type Database = {
           updated_by?: string | null
         }
         Update: {
+          accounting_pain_points?: string | null
           additional_contacts?: Json
+          bank_account_count?: string | null
+          bank_accounts_split?: string | null
           city?: string | null
+          cnpj?: string | null
           company_or_person?: string
           contact_method?: Database["public"]["Enums"]["contact_method"] | null
           contact_name?: string | null
           created_at?: string
           created_by?: string | null
+          employee_count?: string | null
+          employee_count_clt?: string | null
+          employee_count_pj?: string | null
           email?: string | null
           estimated_value?: number | null
+          financial_system?: string | null
           funnel_id?: string
           has_been_contacted?: boolean
           id?: string
+          monthly_invoice_count?: string | null
+          monthly_revenue_fiscal?: string | null
+          monthly_revenue_managerial?: string | null
           next_follow_up?: string | null
           notes?: string | null
           owner_id?: string | null
           phone?: string | null
           position?: number
+          payroll_gross_value?: string | null
           segment?: string | null
           segment_other?: string | null
           source?: string | null

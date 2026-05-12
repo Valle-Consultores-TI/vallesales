@@ -86,6 +86,18 @@ export const serializeLeadSource = (source: string, indicationBy: string) => {
 
 export const digitsOnly = (value: string) => value.replace(/\D/g, "");
 
+export const formatCnpj = (value: string) => {
+  const digits = digitsOnly(value).slice(0, 14);
+  if (!digits) return "";
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+  if (digits.length <= 12) {
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+  }
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+};
+
 export const formatPhone = (value: string) => {
   const digits = digitsOnly(value).slice(0, 11);
   if (!digits) return "";

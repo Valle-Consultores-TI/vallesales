@@ -525,44 +525,67 @@ export const useLeadAttachments = (leadId: string | null) => {
   });
 };
 
+export const uploadLeadAttachmentFile = async ({
+  leadId,
+  file,
+  userId,
+  displayName,
+  activityDescription,
+}: {
+  leadId: string;
+  file: File;
+  userId?: string | null;
+  displayName?: string;
+  activityDescription?: string;
+}) => {
+  const ext = file.name.split(".").pop();
+  const path = `${leadId}/${crypto.randomUUID()}${ext ? `.${ext}` : ""}`;
+  const fileName = displayName ?? file.name;
+
+  const { error: upErr } = await supabase.storage
+    .from("lead-attachments").upload(path, file);
+  if (upErr) {
+    if (/row-level security|violates row level security/i.test(upErr.message)) {
+      throw new Error("Nao foi possivel enviar o anexo por falta de permissao neste lead.");
+    }
+    throw upErr;
+  }
+
+  const { error } = await supabase.from("lead_attachments").insert({
+    lead_id: leadId,
+    file_name: fileName,
+    file_path: path,
+    file_size: file.size,
+    mime_type: file.type,
+    created_by: userId,
+    updated_by: userId,
+  });
+  if (error) {
+    await supabase.storage.from("lead-attachments").remove([path]);
+    if (/row-level security|violates row level security/i.test(error.message)) {
+      throw new Error("Nao foi possivel enviar o anexo por falta de permissao neste lead.");
+    }
+    throw error;
+  }
+
+  const { error: activityError } = await supabase.from("lead_activities").insert({
+    lead_id: leadId,
+    type: "attachment_added",
+    description: activityDescription || `Anexo enviado: ${fileName}`,
+    created_by: userId,
+    updated_by: userId,
+  });
+  if (activityError) {
+    console.warn("Nao foi possivel registrar a atividade do anexo.", activityError);
+  }
+};
+
 export const useUploadAttachment = (leadId: string) => {
   const qc = useQueryClient();
   const { user } = useAuth();
   return useMutation({
-    mutationFn: async (file: File) => {
-      const ext = file.name.split(".").pop();
-      const path = `${leadId}/${crypto.randomUUID()}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from("lead-attachments").upload(path, file);
-      if (upErr) {
-        if (/row-level security|violates row level security/i.test(upErr.message)) {
-          throw new Error("Nao foi possivel enviar o anexo por falta de permissao neste lead.");
-        }
-        throw upErr;
-      }
-
-      const { error } = await supabase.from("lead_attachments").insert({
-        lead_id: leadId, file_name: file.name, file_path: path,
-        file_size: file.size, mime_type: file.type,
-        created_by: user?.id, updated_by: user?.id,
-      });
-      if (error) {
-        await supabase.storage.from("lead-attachments").remove([path]);
-        if (/row-level security|violates row level security/i.test(error.message)) {
-          throw new Error("Nao foi possivel enviar o anexo por falta de permissao neste lead.");
-        }
-        throw error;
-      }
-
-      const { error: activityError } = await supabase.from("lead_activities").insert({
-        lead_id: leadId, type: "attachment_added",
-        description: `Anexo enviado: ${file.name}`,
-        created_by: user?.id, updated_by: user?.id,
-      });
-      if (activityError) {
-        console.warn("Nao foi possivel registrar a atividade do anexo.", activityError);
-      }
-    },
+    mutationFn: async (file: File) =>
+      uploadLeadAttachmentFile({ leadId, file, userId: user?.id, displayName: file.name }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["lead_attachments", leadId] });
       qc.invalidateQueries({ queryKey: ["lead_activities", leadId] });

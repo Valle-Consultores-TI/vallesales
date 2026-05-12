@@ -263,6 +263,8 @@ export const LeadDetailsSheet = ({
                 value={formatDate(lead.next_follow_up)}
               />
             )}
+            {lead.cnpj && <Info label="CNPJ" value={lead.cnpj} />}
+            {lead.employee_count && <Info label="Funcionarios" value={lead.employee_count} />}
             {sourceState.source && <Info label="Origem" value={sourceState.source} />}
             {sourceState.indication_by && <Info label="Indicacao por" value={sourceState.indication_by} />}
             {lead.segment && <Info label="Segmento" value={lead.segment} />}
@@ -322,6 +324,50 @@ export const LeadDetailsSheet = ({
               {lead.service_details && (
                 <Card className="border-0 bg-secondary/40 p-3 text-sm whitespace-pre-wrap">
                   {lead.service_details}
+                </Card>
+              )}
+            </Card>
+          )}
+
+          {(lead.monthly_revenue_managerial ||
+            lead.monthly_revenue_fiscal ||
+            lead.monthly_invoice_count ||
+            lead.employee_count_clt ||
+            lead.employee_count_pj ||
+            lead.payroll_gross_value ||
+            lead.bank_account_count ||
+            lead.bank_accounts_split ||
+            lead.financial_system ||
+            lead.accounting_pain_points) && (
+            <Card className="space-y-3 border-border/70 p-4">
+              <div>
+                <h4 className="text-sm font-semibold text-foreground">Diagnostico financeiro e operacional</h4>
+                <p className="text-xs text-muted-foreground">
+                  Informacoes complementares coletadas no formulario comercial.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+                {lead.monthly_revenue_managerial && (
+                  <Info label="Faturamento gerencial medio" value={lead.monthly_revenue_managerial} />
+                )}
+                {lead.monthly_revenue_fiscal && (
+                  <Info label="Faturamento fiscal medio" value={lead.monthly_revenue_fiscal} />
+                )}
+                {lead.monthly_invoice_count && (
+                  <Info label="NF por mes" value={lead.monthly_invoice_count} />
+                )}
+                {lead.employee_count_clt && <Info label="Funcionarios CLT" value={lead.employee_count_clt} />}
+                {lead.employee_count_pj && <Info label="Profissionais PJ" value={lead.employee_count_pj} />}
+                {lead.payroll_gross_value && <Info label="Folha bruta media" value={lead.payroll_gross_value} />}
+                {lead.bank_account_count && <Info label="Contas bancarias" value={lead.bank_account_count} />}
+                {lead.bank_accounts_split && (
+                  <Info label="Separacao por projeto/centro de custo" value={lead.bank_accounts_split} />
+                )}
+                {lead.financial_system && <Info label="Sistema financeiro" value={lead.financial_system} />}
+              </div>
+              {lead.accounting_pain_points && (
+                <Card className="border-0 bg-secondary/40 p-3 text-sm whitespace-pre-wrap">
+                  {lead.accounting_pain_points}
                 </Card>
               )}
             </Card>

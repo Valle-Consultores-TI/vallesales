@@ -56,6 +56,10 @@ const allowedLeadFields = new Set([
   "contact_name",
   "phone",
   "email",
+  "employee_count",
+  "employee_count_clt",
+  "employee_count_pj",
+  "cnpj",
   "source",
   "segment",
   "segment_other",
@@ -71,6 +75,14 @@ const allowedLeadFields = new Set([
   "notes",
   "additional_contacts",
   "tax_regime",
+  "monthly_revenue_managerial",
+  "monthly_revenue_fiscal",
+  "monthly_invoice_count",
+  "payroll_gross_value",
+  "bank_account_count",
+  "bank_accounts_split",
+  "financial_system",
+  "accounting_pain_points",
   "service_types",
   "service_details",
   "position",
@@ -172,6 +184,18 @@ const prepareLeadPayload = (
   if (Object.prototype.hasOwnProperty.call(normalized, "email")) {
     normalized.email = normalizeOptionalString(normalized.email);
   }
+  if (Object.prototype.hasOwnProperty.call(normalized, "employee_count")) {
+    normalized.employee_count = normalizeOptionalString(normalized.employee_count);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "employee_count_clt")) {
+    normalized.employee_count_clt = normalizeOptionalString(normalized.employee_count_clt);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "employee_count_pj")) {
+    normalized.employee_count_pj = normalizeOptionalString(normalized.employee_count_pj);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "cnpj")) {
+    normalized.cnpj = normalizeOptionalString(normalized.cnpj);
+  }
   if (Object.prototype.hasOwnProperty.call(normalized, "source")) {
     normalized.source = normalizeOptionalString(normalized.source);
   }
@@ -204,6 +228,30 @@ const prepareLeadPayload = (
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "tax_regime")) {
     normalized.tax_regime = normalizeOptionalString(normalized.tax_regime);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "monthly_revenue_managerial")) {
+    normalized.monthly_revenue_managerial = normalizeOptionalString(normalized.monthly_revenue_managerial);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "monthly_revenue_fiscal")) {
+    normalized.monthly_revenue_fiscal = normalizeOptionalString(normalized.monthly_revenue_fiscal);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "monthly_invoice_count")) {
+    normalized.monthly_invoice_count = normalizeOptionalString(normalized.monthly_invoice_count);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "payroll_gross_value")) {
+    normalized.payroll_gross_value = normalizeOptionalString(normalized.payroll_gross_value);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "bank_account_count")) {
+    normalized.bank_account_count = normalizeOptionalString(normalized.bank_account_count);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "bank_accounts_split")) {
+    normalized.bank_accounts_split = normalizeOptionalString(normalized.bank_accounts_split);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "financial_system")) {
+    normalized.financial_system = normalizeOptionalString(normalized.financial_system);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "accounting_pain_points")) {
+    normalized.accounting_pain_points = normalizeOptionalString(normalized.accounting_pain_points);
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "service_details")) {
     normalized.service_details = normalizeOptionalString(normalized.service_details);
@@ -504,18 +552,24 @@ serve(async (req) => {
 
       const [created] = await sql`
         insert into public.leads (
-          funnel_id, company_or_person, contact_name, phone, email, source, segment, segment_other, city, uf,
-          owner_id, estimated_value, temperature, stage_id, has_been_contacted,
-          contact_method, next_follow_up, notes, additional_contacts, tax_regime,
+          funnel_id, company_or_person, contact_name, phone, email, employee_count, employee_count_clt, employee_count_pj,
+          cnpj, source, segment, segment_other, city, uf, owner_id, estimated_value, temperature, stage_id,
+          has_been_contacted, contact_method, next_follow_up, notes, additional_contacts, tax_regime,
+          monthly_revenue_managerial, monthly_revenue_fiscal, monthly_invoice_count, payroll_gross_value,
+          bank_account_count, bank_accounts_split, financial_system, accounting_pain_points,
           service_types, service_details, position, created_by, updated_by
         ) values (
           ${lead.funnel_id as string}, ${lead.company_or_person as string}, ${lead.contact_name ?? null}, ${lead.phone ?? null},
-          ${lead.email ?? null}, ${lead.source ?? null}, ${lead.segment ?? null}, ${lead.segment_other ?? null},
+          ${lead.email ?? null}, ${lead.employee_count ?? null}, ${lead.employee_count_clt ?? null}, ${lead.employee_count_pj ?? null},
+          ${lead.cnpj ?? null}, ${lead.source ?? null}, ${lead.segment ?? null}, ${lead.segment_other ?? null},
           ${lead.city ?? null}, ${lead.uf ?? null}, ${lead.owner_id ?? null}, ${lead.estimated_value ?? 0},
           ${lead.temperature ?? "morno"}, ${lead.stage_id as string}, ${lead.has_been_contacted ?? false},
           ${lead.contact_method ?? null}, ${lead.next_follow_up ?? null}, ${lead.notes ?? null},
-          ${lead.additional_contacts ?? []}, ${lead.tax_regime ?? null}, ${lead.service_types ?? []},
-          ${lead.service_details ?? null}, ${lead.position ?? 0}, ${userId}, ${userId}
+          ${lead.additional_contacts ?? []}, ${lead.tax_regime ?? null}, ${lead.monthly_revenue_managerial ?? null},
+          ${lead.monthly_revenue_fiscal ?? null}, ${lead.monthly_invoice_count ?? null}, ${lead.payroll_gross_value ?? null},
+          ${lead.bank_account_count ?? null}, ${lead.bank_accounts_split ?? null}, ${lead.financial_system ?? null},
+          ${lead.accounting_pain_points ?? null}, ${lead.service_types ?? []}, ${lead.service_details ?? null},
+          ${lead.position ?? 0}, ${userId}, ${userId}
         )
         returning *
       `;
