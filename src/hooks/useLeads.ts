@@ -1,3 +1,4 @@
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Lead, LeadInsert, LeadUpdate, PipelineStage, Profile } from "@/types/crm";
@@ -31,9 +32,72 @@ const buildStageKey = () => `stage_${crypto.randomUUID().replace(/-/g, "").slice
 const sortStagesByPosition = (stages: PipelineStage[]) =>
   [...stages].sort((left, right) => left.position - right.position || left.created_at.localeCompare(right.created_at));
 
-const invokeLeadsApi = async <T>(body: Record<string, unknown>): Promise<T> => {
-  const { data, error } = await supabase.functions.invoke("leads-api", { body });
-  if (error) throw error;
+const getFunctionsHttpErrorMessage = async (error: FunctionsHttpError) => {
+  try {
+    const response = error.context;
+    const data = await response.json();
+    if (hasApiError(data) && data.error) return data.error;
+    if (typeof data === "string" && data.trim()) return data;
+  } catch {
+    try {
+      const fallbackText = await error.context.text();
+      if (fallbackText.trim()) return fallbackText;
+    } catch {
+      // Ignore parsing failures and fall back to the SDK message below.
+    }
+  }
+
+  return error.message;
+};
+
+const shouldRetryLeadsApiAuth = (status: number | undefined, message: string) =>
+  status === 401 || /sessao nao encontrada|jwt|unauthorized/i.test(message);
+
+const readCurrentAccessToken = async () => {
+  const { data: sessionData } = await supabase.auth.getSession();
+  return sessionData.session?.access_token ?? null;
+};
+
+const refreshAccessToken = async () => {
+  const { data, error } = await supabase.auth.refreshSession();
+  if (error) return null;
+  return data.session?.access_token ?? null;
+};
+
+const invokeLeadsApi = async <T>(body: Record<string, unknown>, retryOnAuthFailure = true): Promise<T> => {
+  let accessToken = await readCurrentAccessToken();
+
+  if (!accessToken) {
+    accessToken = await refreshAccessToken();
+  }
+
+  const { data, error } = await supabase.functions.invoke("leads-api", {
+    body,
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+  });
+
+  if (error) {
+    if (error instanceof FunctionsHttpError) {
+      const message = await getFunctionsHttpErrorMessage(error);
+      const status = error.context.status;
+
+      if (retryOnAuthFailure && shouldRetryLeadsApiAuth(status, message)) {
+        const refreshedAccessToken = await refreshAccessToken();
+        if (refreshedAccessToken && refreshedAccessToken !== accessToken) {
+          return invokeLeadsApi<T>(body, false);
+        }
+      }
+
+      if (status === 401) {
+        throw new Error("Sua sessao expirou ou nao foi encontrada. Entre novamente no sistema.");
+      }
+
+      throw new Error(message);
+    }
+
+    throw error;
+  }
+
   if (hasApiError(data) && data.error) throw new Error(data.error);
   return data as T;
 };

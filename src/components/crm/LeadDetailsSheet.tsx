@@ -163,8 +163,11 @@ export const LeadDetailsSheet = ({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full overflow-y-auto p-0 sm:max-w-xl">
-        <div className="bg-gradient-header p-6 text-header-foreground">
+      <SheetContent
+        side="center"
+        className="flex h-[min(90vh,54rem)] w-[min(96vw,72rem)] max-w-none flex-col overflow-hidden rounded-2xl border p-0"
+      >
+        <div className="shrink-0 bg-gradient-header p-6 text-header-foreground">
           <SheetHeader className="space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -212,7 +215,7 @@ export const LeadDetailsSheet = ({
           </SheetHeader>
         </div>
 
-        <div className="space-y-6 p-6">
+        <div className="flex-1 space-y-6 overflow-y-auto p-6">
           <div className="grid grid-cols-2 gap-3 text-sm">
             {lead.phone && <Info icon={<Phone className="h-3.5 w-3.5" />} label="Telefone" value={lead.phone} />}
             {lead.email && <Info icon={<Mail className="h-3.5 w-3.5" />} label="E-mail" value={lead.email} />}

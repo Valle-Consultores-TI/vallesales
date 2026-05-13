@@ -531,12 +531,12 @@ const Index = () => {
         <div className="mb-4">
           {topPanelExpanded ? (
             <div className="space-y-4">
-              <div className="relative">
+              <div className="flex items-start gap-2.5">
                 <button
                   type="button"
                   onClick={() => setTopPanelExpanded(false)}
                   className={cn(
-                    "absolute right-0 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border bg-background transition-all",
+                    "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-background transition-all",
                     "border-[#b07a55]/70 text-[#b07a55] shadow-xs hover:border-[#9f6c49] hover:bg-[#f7ede5] hover:shadow-card",
                   )}
                   aria-label="Recolher indicadores e filtros"
@@ -545,28 +545,28 @@ const Index = () => {
                   <ChevronUp className="h-5 w-5" />
                 </button>
 
-                <div className="grid grid-cols-2 gap-2.5 pr-14 sm:grid-cols-3 lg:grid-cols-5">
-                <StatCard icon={<TrendingUp className="h-4 w-4" />} label="Em aberto" value={String(stats.count)} tone="primary" />
-                <StatCard icon={<DollarSign className="h-4 w-4" />} label="Pipeline" value={formatCurrency(stats.pipelineValue)} tone="accent" />
-                <StatCard icon={<Thermometer className="h-4 w-4" />} label="Fechados" value={formatCurrency(stats.wonValue)} tone="success" />
-                <StatCard
-                  icon={<Zap className="h-4 w-4" />}
-                  label="Acoes hoje"
-                  value={String(stats.actionToday)}
-                  tone={stats.actionToday > 0 ? "accent" : "muted"}
-                  clickable
-                  active={statusFilter === "acao_hoje"}
-                  onClick={() => setStatusFilter(statusFilter === "acao_hoje" ? "todos" : "acao_hoje")}
-                />
-                <StatCard
-                  icon={<AlertTriangle className="h-4 w-4" />}
-                  label="Atrasados"
-                  value={String(stats.overdue)}
-                  tone={stats.overdue > 0 ? "danger" : "muted"}
-                  clickable
-                  active={statusFilter === "atrasados"}
-                  onClick={() => setStatusFilter(statusFilter === "atrasados" ? "todos" : "atrasados")}
-                />
+                <div className="grid flex-1 grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+                  <StatCard icon={<TrendingUp className="h-4 w-4" />} label="Em aberto" value={String(stats.count)} tone="primary" />
+                  <StatCard icon={<DollarSign className="h-4 w-4" />} label="Pipeline" value={formatCurrency(stats.pipelineValue)} tone="accent" />
+                  <StatCard icon={<Thermometer className="h-4 w-4" />} label="Fechados" value={formatCurrency(stats.wonValue)} tone="success" />
+                  <StatCard
+                    icon={<Zap className="h-4 w-4" />}
+                    label="Acoes hoje"
+                    value={String(stats.actionToday)}
+                    tone={stats.actionToday > 0 ? "accent" : "muted"}
+                    clickable
+                    active={statusFilter === "acao_hoje"}
+                    onClick={() => setStatusFilter(statusFilter === "acao_hoje" ? "todos" : "acao_hoje")}
+                  />
+                  <StatCard
+                    icon={<AlertTriangle className="h-4 w-4" />}
+                    label="Atrasados"
+                    value={String(stats.overdue)}
+                    tone={stats.overdue > 0 ? "danger" : "muted"}
+                    clickable
+                    active={statusFilter === "atrasados"}
+                    onClick={() => setStatusFilter(statusFilter === "atrasados" ? "todos" : "atrasados")}
+                  />
                 </div>
               </div>
 
@@ -683,11 +683,11 @@ const Index = () => {
                 aria-expanded={topPanelExpanded}
                 aria-label="Expandir indicadores e filtros"
               >
-                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/80">
-                  Indicadores e filtros recolhidos
-                </span>
                 <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#b07a55] text-white shadow-sm">
                   <ChevronDown className="h-3.5 w-3.5" />
+                </span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/80">
+                  Indicadores e filtros recolhidos
                 </span>
               </button>
             </div>
@@ -695,7 +695,7 @@ const Index = () => {
         </div>
       </div>
 
-      <main className="flex-1 px-4 py-4 md:px-6">
+      <main className="flex-1 min-h-[calc(100vh-4rem)] px-4 py-4 md:px-6">
         <div className="flex flex-col gap-4">
           <div className="flex-1">
             {loading ? (

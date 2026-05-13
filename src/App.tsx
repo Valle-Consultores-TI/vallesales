@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ActiveFunnelProvider } from "@/hooks/useActiveFunnel";
+import { UiScaleProvider } from "@/hooks/useUiScale";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index.tsx";
 import Contacts from "./pages/Contatos.tsx";
@@ -42,28 +43,30 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} storageKey="vallesales-theme">
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <AuthProvider>
-            <ActiveFunnelProvider>
-              <Routes>
-                <Route path="/auth" element={<Auth />} />
-                <Route path="/captacao" element={<PublicLeadForm />} />
-                <Route path="/fale-conosco" element={<PublicLeadForm />} />
-                <Route path="/aguardando-aprovacao" element={<ProtectedRoute><AguardandoAprovacao /></ProtectedRoute>} />
-                <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-                <Route path="/contatos" element={<ProtectedRoute><Contacts /></ProtectedRoute>} />
-                <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-                <Route path="/configuracoes" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />
-                <Route path="/configuracoes/aparencia" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />
-                <Route path="/configuracoes/equipe" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />
-                <Route path="/equipe" element={<ProtectedRoute><Navigate to="/configuracoes/equipe" replace /></ProtectedRoute>} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </ActiveFunnelProvider>
-          </AuthProvider>
-        </BrowserRouter>
+        <UiScaleProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <AuthProvider>
+              <ActiveFunnelProvider>
+                <Routes>
+                  <Route path="/auth" element={<Auth />} />
+                  <Route path="/captacao" element={<PublicLeadForm />} />
+                  <Route path="/fale-conosco" element={<PublicLeadForm />} />
+                  <Route path="/aguardando-aprovacao" element={<ProtectedRoute><AguardandoAprovacao /></ProtectedRoute>} />
+                  <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+                  <Route path="/contatos" element={<ProtectedRoute><Contacts /></ProtectedRoute>} />
+                  <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                  <Route path="/configuracoes" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />
+                  <Route path="/configuracoes/aparencia" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />
+                  <Route path="/configuracoes/equipe" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />
+                  <Route path="/equipe" element={<ProtectedRoute><Navigate to="/configuracoes/equipe" replace /></ProtectedRoute>} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </ActiveFunnelProvider>
+            </AuthProvider>
+          </BrowserRouter>
+        </UiScaleProvider>
       </ThemeProvider>
     </TooltipProvider>
   </QueryClientProvider>

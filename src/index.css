@@ -158,6 +158,18 @@
 }
 
 @layer base {
+  html {
+    font-size: 16px;
+  }
+
+  html[data-ui-scale="compact"] {
+    font-size: 15px;
+  }
+
+  html[data-ui-scale="comfortable"] {
+    font-size: 17px;
+  }
+
   * { @apply border-border; }
   body {
     @apply bg-background text-foreground antialiased;

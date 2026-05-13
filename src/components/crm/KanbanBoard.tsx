@@ -581,8 +581,8 @@ export const KanbanBoard = ({
       </div>
 
       {scrollMetrics.hasOverflow && (
-        <div className="sticky bottom-2 z-20 mt-1">
-          <div className="rounded-full border border-border/70 bg-background/95 p-1 shadow-card backdrop-blur">
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-4 pb-2 md:px-6">
+          <div className="pointer-events-auto rounded-full border border-border/70 bg-background/95 p-1 shadow-card backdrop-blur">
             <div
               ref={stickyScrollbarRef}
               onScroll={() => syncHorizontalScroll("sticky")}

@@ -6,6 +6,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { MyAccountSettings } from "@/components/settings/MyAccountSettings";
 import { Card } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useUiScale, type UiScale } from "@/hooks/useUiScale";
 import { usePermissions } from "@/hooks/useUserRoles";
 import { cn } from "@/lib/utils";
 import { TeamManagement } from "./Equipe";
@@ -113,6 +114,7 @@ const SettingsNavItem = ({
 
 const ThemePreference = () => {
   const { theme, setTheme } = useTheme();
+  const { scale, setScale } = useUiScale();
   const selectedTheme = theme === "dark" ? "dark" : "light";
 
   const handleThemeChange = (value: string) => {
@@ -121,11 +123,19 @@ const ThemePreference = () => {
     }
   };
 
+  const handleScaleChange = (value: string) => {
+    if (value === "compact" || value === "default" || value === "comfortable") {
+      setScale(value as UiScale);
+    }
+  };
+
   return (
     <section className="space-y-6">
       <div>
         <h3 className="text-xl font-bold tracking-tight text-foreground md:text-2xl">Aparencia</h3>
-        <p className="mt-0.5 text-sm text-muted-foreground">Escolha como a interface deve aparecer neste navegador.</p>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Escolha como a interface deve aparecer neste navegador.
+        </p>
       </div>
 
       <Card className="max-w-xl p-5">
@@ -151,8 +161,88 @@ const ThemePreference = () => {
           </ToggleGroup>
         </div>
       </Card>
+
+      <Card className="max-w-2xl p-5">
+        <div className="space-y-4">
+          <div>
+            <p className="font-medium text-foreground">Tamanho e densidade da interface</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Isso ajuda quem usa o navegador com zoom reduzido para ver mais elementos, mas ainda quer leitura confortavel.
+            </p>
+          </div>
+
+          <ToggleGroup
+            type="single"
+            value={scale}
+            onValueChange={handleScaleChange}
+            className="flex flex-wrap justify-start gap-2 rounded-lg border border-border bg-muted/40 p-2"
+          >
+            <ToggleGroupItem value="compact" aria-label="Usar modo compacto" className="px-3">
+              Compacto
+            </ToggleGroupItem>
+            <ToggleGroupItem value="default" aria-label="Usar modo padrao" className="px-3">
+              Padrao
+            </ToggleGroupItem>
+            <ToggleGroupItem value="comfortable" aria-label="Usar modo confortavel" className="px-3">
+              Confortavel
+            </ToggleGroupItem>
+          </ToggleGroup>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <ScalePreviewCard
+              value="compact"
+              title="Compacto"
+              description="Mostra mais elementos na tela. Bom para quem prefere densidade maior."
+              active={scale === "compact"}
+              onClick={handleScaleChange}
+            />
+            <ScalePreviewCard
+              value="default"
+              title="Padrao"
+              description="Mantem o equilibrio atual entre leitura e quantidade de informacao."
+              active={scale === "default"}
+              onClick={handleScaleChange}
+            />
+            <ScalePreviewCard
+              value="comfortable"
+              title="Confortavel"
+              description="Aumenta texto, icones e espacos para melhorar a leitura com zoom baixo."
+              active={scale === "comfortable"}
+              onClick={handleScaleChange}
+            />
+          </div>
+        </div>
+      </Card>
     </section>
   );
 };
+
+const ScalePreviewCard = ({
+  value,
+  title,
+  description,
+  active,
+  onClick,
+}: {
+  value: UiScale;
+  title: string;
+  description: string;
+  active: boolean;
+  onClick: (value: string) => void;
+}) => (
+  <button
+    type="button"
+    onClick={() => onClick(value)}
+    className={cn(
+      "rounded-xl border p-4 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
+      active
+        ? "border-accent bg-accent/8 shadow-sm"
+        : "border-border bg-background hover:border-accent/40 hover:bg-accent/5",
+    )}
+  >
+    <p className="font-medium text-foreground">{title}</p>
+    <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+  </button>
+);
 
 export default Configuracoes;
