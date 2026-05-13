@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
-import { Loader2, Building2, Eye, EyeOff } from "lucide-react";
+import { Loader2, Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import valleSymbolWhite from "@/assets/valle-symbol-white.png";
 
 const emailSchema = z.string().trim().email("E-mail invalido").max(255);
 const passwordSchema = z.string().min(6, "Minimo 6 caracteres").max(72);
@@ -133,8 +134,8 @@ export default function Auth() {
 
       <div className="relative w-full max-w-md">
         <div className="mb-8 flex flex-col items-center text-header-foreground">
-          <div className="mb-4 rounded-2xl bg-accent p-3.5 shadow-elevated">
-            <Building2 className="h-8 w-8 text-accent-foreground" />
+          <div className="mb-4 rounded-2xl bg-white/10 p-3.5 shadow-elevated backdrop-blur">
+            <img src={valleSymbolWhite} alt="Valle" className="h-8 w-8 object-contain" />
           </div>
           <h1 className="text-3xl font-bold tracking-tight">Valle Sales</h1>
           <p className="mt-1 text-sm font-medium tracking-wider text-header-muted">CRM Comercial</p>

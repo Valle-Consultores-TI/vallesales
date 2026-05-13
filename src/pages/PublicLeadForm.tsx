@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { z } from "zod";
-import { Building2, CheckCircle2, ChevronDown, Loader2, Send } from "lucide-react";
+import { CheckCircle2, ChevronDown, Loader2, Send } from "lucide-react";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,6 +22,7 @@ import {
 } from "@/lib/lead-form";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import valleSymbolWhite from "@/assets/valle-symbol-white.png";
 
 const stepOneSchema = z.object({
   contact_name: z.string().trim().min(2, "Informe o seu nome."),
@@ -297,7 +298,7 @@ const PublicLeadForm = () => {
       <div className="relative mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
         <section className="text-header-foreground">
           <div className="mb-6 inline-flex rounded-2xl bg-white/10 p-3 shadow-elevated backdrop-blur">
-            <Building2 className="h-8 w-8" />
+            <img src={valleSymbolWhite} alt="Valle" className="h-8 w-8 object-contain" />
           </div>
           <p className="text-sm font-semibold uppercase tracking-[0.28em] text-header-muted">Valle | Consultores</p>
           <h1 className="mt-4 max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl">

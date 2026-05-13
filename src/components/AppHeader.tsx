@@ -1,9 +1,10 @@
 import { Link } from "react-router-dom";
-import { ContactRound, Building2, Kanban, LayoutDashboard, LogOut, Settings } from "lucide-react";
+import { ContactRound, Kanban, LayoutDashboard, LogOut, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
+import valleSymbolWhite from "@/assets/valle-symbol-white.png";
 
 type AppHeaderSection = "funil" | "contatos" | "dashboard" | "configuracoes";
 
@@ -22,8 +23,8 @@ export const AppHeader = ({ active }: { active: AppHeaderSection }) => {
     <header className="bg-gradient-header text-header-foreground shadow-sm border-b border-header-border">
       <div className="px-4 md:px-6 py-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="bg-accent rounded-lg p-2 shrink-0 shadow-sm">
-            <Building2 className="h-5 w-5 text-accent-foreground" />
+          <div className="inline-flex rounded-2xl bg-white/10 p-2 shadow-sm backdrop-blur">
+            <img src={valleSymbolWhite} alt="Valle" className="h-5 w-5 shrink-0 object-contain" />
           </div>
           <div className="min-w-0">
             <h1 className="font-bold text-base md:text-lg leading-tight truncate tracking-tight">Valle Sales</h1>
