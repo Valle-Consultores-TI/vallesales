@@ -221,7 +221,7 @@ export const LeadDetailsSheet = ({
 
   const handleDelete = async () => {
     if (!confirm("Excluir este lead permanentemente?")) return;
-    await del.mutateAsync(lead.id);
+    await del.mutateAsync(lead);
     onOpenChange(false);
   };
 

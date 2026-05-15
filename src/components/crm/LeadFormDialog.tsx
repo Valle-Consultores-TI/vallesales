@@ -346,11 +346,12 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
       : await create.mutateAsync(payload);
 
     if (lostReasonText?.trim()) {
+      const trimmedLossReason = lostReasonText.trim();
       await addLeadNoteEntry({
         leadId: savedLead.id,
-        content: `Motivo da perda: ${lostReasonText.trim()}`,
+        content: `Motivo da perda: ${trimmedLossReason}`,
         userId: user?.id,
-        activityDescription: "Motivo da perda registrado",
+        activityDescription: `Cliente perdido: ${trimmedLossReason}`,
       });
       qc.invalidateQueries({ queryKey: ["lead_notes", savedLead.id] });
       qc.invalidateQueries({ queryKey: ["lead_activities", savedLead.id] });
@@ -405,7 +406,7 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
     }
 
     if (archiveAfterSave) {
-      await archiveLead.mutateAsync(savedLead.id);
+      await archiveLead.mutateAsync(savedLead);
     }
 
     setLossReasonDialogOpen(false);
@@ -445,7 +446,7 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
 
     if (!shouldArchive) return;
 
-    await archiveLead.mutateAsync(lead.id);
+    await archiveLead.mutateAsync(lead);
     setLossReasonDialogOpen(false);
     setWonArchiveDialogOpen(false);
     onOpenChange(false);

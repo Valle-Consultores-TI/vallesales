@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useLeads, useStages } from "@/hooks/useLeads";
 import { useActiveFunnel } from "@/hooks/useActiveFunnel";
 import { digitsOnly, formatPhone, parseAdditionalContacts } from "@/lib/lead-form";
+import { buildLeadSearchText } from "@/lib/lead-search";
 import { cn } from "@/lib/utils";
 import type { Lead } from "@/types/crm";
 import { Building2, Check, ChevronDown, Loader2, Mail, Phone, Search, Users, X } from "lucide-react";
@@ -33,6 +34,7 @@ type ContactSourceRow = {
   createdAt: string;
   updatedAt: string;
   sourceOrder: number;
+  searchableLeadText: string;
 };
 
 type ContactRow = {
@@ -53,6 +55,7 @@ type ContactRow = {
   linkedCompanies: string[];
   otherCompanies: string[];
   linkedEmails: string[];
+  searchableLeadTexts: string[];
 };
 
 const situationLabels: Record<ContactSituation, string> = {
@@ -175,6 +178,7 @@ const buildRowsForLead = (
   lostStageId?: string,
 ): ContactSourceRow[] => {
   const situation = classifySituation(lead, wonStageId, lostStageId);
+  const searchableLeadText = buildLeadSearchText(lead);
   const rows: ContactSourceRow[] = [];
   const seen = new Set<string>();
 
@@ -205,6 +209,7 @@ const buildRowsForLead = (
     createdAt: lead.created_at,
     updatedAt: lead.updated_at ?? lead.created_at,
     sourceOrder: 0,
+    searchableLeadText,
   });
   registerSeen(primaryIdentity, primaryFallback);
 
@@ -232,6 +237,7 @@ const buildRowsForLead = (
       createdAt: lead.created_at,
       updatedAt: lead.updated_at ?? lead.created_at,
       sourceOrder: index + 1,
+      searchableLeadText,
     });
     registerSeen(identity, fallbackId);
   });
@@ -263,6 +269,7 @@ const consolidateContactRows = (rows: ContactSourceRow[]): ContactRow[] => {
       const linkedContactNames = uniqueValues(group.map((row) => row.contactName));
       const linkedCompanies = uniqueValues(group.map((row) => row.company));
       const linkedEmails = uniqueValues(group.map((row) => row.email));
+      const searchableLeadTexts = uniqueValues(group.map((row) => row.searchableLeadText));
       const bestPhone =
         pickPreferredField(group, (row) => row.phone) ??
         (identity.startsWith("phone:") ? identity.slice("phone:".length) : null);
@@ -299,6 +306,7 @@ const consolidateContactRows = (rows: ContactSourceRow[]): ContactRow[] => {
         linkedCompanies,
         otherCompanies,
         linkedEmails,
+        searchableLeadTexts,
       };
     })
     .sort((left, right) => compareDatesDesc(left.updatedAt, right.updatedAt));
@@ -468,6 +476,7 @@ const Contacts = () => {
         row.funnelNames.join(" "),
         row.phone,
         row.email,
+        row.searchableLeadTexts.join(" "),
         row.linkedCompanies.join(" "),
         row.linkedEmails.join(" "),
         situationLabels[row.situation],

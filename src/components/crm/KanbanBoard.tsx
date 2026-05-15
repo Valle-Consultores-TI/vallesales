@@ -122,11 +122,12 @@ export const KanbanBoard = ({
     });
 
     if (options?.lostReasonText?.trim()) {
+      const trimmedLossReason = options.lostReasonText.trim();
       await addLeadNoteEntry({
         leadId: lead.id,
-        content: `Motivo da perda: ${options.lostReasonText.trim()}`,
+        content: `Motivo da perda: ${trimmedLossReason}`,
         userId: user?.id,
-        activityDescription: "Motivo da perda registrado",
+        activityDescription: `Cliente perdido: ${trimmedLossReason}`,
       });
       qc.invalidateQueries({ queryKey: ["lead_notes", lead.id] });
       qc.invalidateQueries({ queryKey: ["lead_activities", lead.id] });
@@ -136,7 +137,7 @@ export const KanbanBoard = ({
     }
 
     if (options?.archiveAfter) {
-      await archiveLead.mutateAsync(updatedLead.id);
+      await archiveLead.mutateAsync(updatedLead);
     }
   };
 

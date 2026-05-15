@@ -13,6 +13,7 @@ import { useLeads, useProfiles, useReopenLead, useRestoreLead, useStages } from 
 import { usePermissions } from "@/hooks/useUserRoles";
 import { formatCurrency, formatDateTime } from "@/lib/constants";
 import { parseDateValue } from "@/lib/date";
+import { buildLeadSearchText } from "@/lib/lead-search";
 import { cn } from "@/lib/utils";
 import type { Lead } from "@/types/crm";
 import { format } from "date-fns";
@@ -94,12 +95,12 @@ const ArchivedLeads = () => {
       return;
     }
 
-    setSelectedFunnelIds((current) => {
-      const validCurrent = current.filter((id) => accessibleFunnelIds.includes(id));
-      if (validCurrent.length > 0) return validCurrent;
-      if (activeFunnelId && accessibleFunnelIds.includes(activeFunnelId)) return [activeFunnelId];
-      return [...accessibleFunnelIds];
-    });
+    if (activeFunnelId && accessibleFunnelIds.includes(activeFunnelId)) {
+      setSelectedFunnelIds([activeFunnelId]);
+      return;
+    }
+
+    setSelectedFunnelIds([accessibleFunnelIds[0]]);
   }, [accessibleFunnelIds, activeFunnelId]);
 
   const allFunnelsSelected = hasAvailableFunnels && selectedFunnelIds.length === accessibleFunnelIds.length;
@@ -173,10 +174,7 @@ const ArchivedLeads = () => {
       if (!query) return true;
 
       const haystack = [
-        row.lead.company_or_person,
-        row.lead.contact_name,
-        row.lead.phone,
-        row.lead.email,
+        buildLeadSearchText(row.lead),
         row.ownerName,
         row.funnelName,
         row.lead.loss_reason,
@@ -243,7 +241,7 @@ const ArchivedLeads = () => {
   };
 
   const handleRestore = async (lead: Lead) => {
-    await restoreLead.mutateAsync(lead.id);
+    await restoreLead.mutateAsync(lead);
     if (selectedLead?.id === lead.id) {
       setDetailsOpen(false);
       setSelectedLead(null);

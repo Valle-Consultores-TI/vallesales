@@ -104,6 +104,202 @@ const invokeLeadsApi = async <T>(body: Record<string, unknown>, retryOnAuthFailu
 
 const ALL_FUNNELS_KEY = "__all__";
 type LeadArchiveFilter = "active" | "archived" | "all";
+const UNDO_WINDOW_MS = 5000;
+
+type LeadActionInput = string | Lead;
+type LeadCacheSnapshotEntry = {
+  queryKey: readonly unknown[];
+  previousLead?: Lead;
+  previousIndex: number;
+};
+type LeadCacheSnapshot = {
+  leadId: string;
+  leadDetail?: Lead;
+  leadLists: LeadCacheSnapshotEntry[];
+};
+type PendingLeadUndo = {
+  timeoutId: ReturnType<typeof setTimeout>;
+  restoreSnapshot: () => void;
+  toastId?: string | number;
+};
+
+const pendingLeadUndos = new Map<string, PendingLeadUndo>();
+
+const getLeadActionId = (input: LeadActionInput) => (typeof input === "string" ? input : input.id);
+
+const removeLeadFromList = (items: Lead[], leadId: string) => items.filter((item) => item.id !== leadId);
+
+const insertLeadAtIndex = (items: Lead[], lead: Lead, index: number) => {
+  const nextItems = removeLeadFromList(items, lead.id);
+  const safeIndex = index < 0 ? 0 : Math.min(index, nextItems.length);
+  nextItems.splice(safeIndex, 0, lead);
+  return nextItems;
+};
+
+const parseLeadListQueryKey = (queryKey: readonly unknown[]) => {
+  if (queryKey[0] !== "leads") return null;
+
+  const funnelKey = queryKey[1];
+  const archived = queryKey[2];
+
+  if (typeof funnelKey !== "string") return null;
+  if (archived !== "active" && archived !== "archived" && archived !== "all") return null;
+
+  return { funnelKey, archived } as const;
+};
+
+const captureLeadCacheSnapshot = (qc: ReturnType<typeof useQueryClient>, leadId: string): LeadCacheSnapshot => ({
+  leadId,
+  leadDetail: qc.getQueryData<Lead>(["lead", leadId]),
+  leadLists: qc.getQueriesData<Lead[]>({ queryKey: ["leads"] }).map(([queryKey, current]) => {
+    const previousIndex = current?.findIndex((item) => item.id === leadId) ?? -1;
+    return {
+      queryKey,
+      previousLead: previousIndex >= 0 && current ? current[previousIndex] : undefined,
+      previousIndex,
+    };
+  }),
+});
+
+const restoreLeadCacheSnapshot = (qc: ReturnType<typeof useQueryClient>, snapshot: LeadCacheSnapshot) => {
+  snapshot.leadLists.forEach(({ queryKey, previousLead, previousIndex }) => {
+    qc.setQueryData<Lead[] | undefined>(queryKey, (current) => {
+      if (!current && !previousLead) return current;
+
+      const items = current ?? [];
+      if (!previousLead) return removeLeadFromList(items, snapshot.leadId);
+      return insertLeadAtIndex(items, previousLead, previousIndex);
+    });
+  });
+
+  if (snapshot.leadDetail) {
+    qc.setQueryData<Lead>(["lead", snapshot.leadId], snapshot.leadDetail);
+  } else {
+    qc.removeQueries({ queryKey: ["lead", snapshot.leadId], exact: true });
+  }
+};
+
+const getSnapshotLead = (input: LeadActionInput, snapshot: LeadCacheSnapshot) => {
+  if (typeof input !== "string") return input;
+  if (snapshot.leadDetail) return snapshot.leadDetail;
+  return snapshot.leadLists.find((entry) => entry.previousLead)?.previousLead;
+};
+
+const applyLeadArchiveStateToCache = (qc: ReturnType<typeof useQueryClient>, lead: Lead) => {
+  qc.getQueriesData<Lead[]>({ queryKey: ["leads"] }).forEach(([queryKey]) => {
+    const meta = parseLeadListQueryKey(queryKey);
+    if (!meta) return;
+    if (meta.funnelKey !== ALL_FUNNELS_KEY && meta.funnelKey !== lead.funnel_id) return;
+
+    qc.setQueryData<Lead[] | undefined>(queryKey, (current) => {
+      if (!current) return current;
+
+      const currentIndex = current.findIndex((item) => item.id === lead.id);
+      const shouldInclude = meta.archived === "all" || (meta.archived === "archived" ? lead.is_archived : !lead.is_archived);
+
+      if (!shouldInclude) return removeLeadFromList(current, lead.id);
+      return insertLeadAtIndex(current, lead, currentIndex);
+    });
+  });
+
+  qc.setQueryData<Lead>(["lead", lead.id], lead);
+};
+
+const applyLeadDeletionToCache = (qc: ReturnType<typeof useQueryClient>, leadId: string) => {
+  qc.getQueriesData<Lead[]>({ queryKey: ["leads"] }).forEach(([queryKey]) => {
+    qc.setQueryData<Lead[] | undefined>(queryKey, (current) => (
+      current ? removeLeadFromList(current, leadId) : current
+    ));
+  });
+
+  qc.removeQueries({ queryKey: ["lead", leadId], exact: true });
+};
+
+const cancelPendingLeadUndo = (leadId: string) => {
+  const pending = pendingLeadUndos.get(leadId);
+  if (!pending) return;
+
+  clearTimeout(pending.timeoutId);
+  pending.restoreSnapshot();
+  if (pending.toastId !== undefined) {
+    toast.dismiss(pending.toastId);
+  }
+  pendingLeadUndos.delete(leadId);
+};
+
+const invalidateLeadActionQueries = (qc: ReturnType<typeof useQueryClient>, leadId: string) => {
+  qc.invalidateQueries({ queryKey: ["leads"] });
+  qc.invalidateQueries({ queryKey: ["lead", leadId] });
+  qc.invalidateQueries({ queryKey: ["lead_activities", leadId] });
+  qc.invalidateQueries({ queryKey: ["lead_notes", leadId] });
+  qc.invalidateQueries({ queryKey: ["lead_attachments", leadId] });
+  qc.invalidateQueries({ queryKey: ["crm_notifications_feed"] });
+};
+
+const scheduleUndoableLeadAction = async <T>({
+  qc,
+  input,
+  toastMessage,
+  applyOptimistic,
+  commit,
+  onCommitSuccess,
+}: {
+  qc: ReturnType<typeof useQueryClient>;
+  input: LeadActionInput;
+  toastMessage: string;
+  applyOptimistic: (lead: Lead | undefined) => void;
+  commit: (leadId: string) => Promise<T>;
+  onCommitSuccess?: (result: T, leadId: string) => void;
+}) => {
+  const leadId = getLeadActionId(input);
+  cancelPendingLeadUndo(leadId);
+
+  const snapshot = captureLeadCacheSnapshot(qc, leadId);
+  const snapshotLead = getSnapshotLead(input, snapshot);
+
+  applyOptimistic(snapshotLead);
+
+  const restoreSnapshot = () => restoreLeadCacheSnapshot(qc, snapshot);
+  const timeoutId = setTimeout(async () => {
+    pendingLeadUndos.delete(leadId);
+
+    try {
+      const result = await commit(leadId);
+      onCommitSuccess?.(result, leadId);
+      invalidateLeadActionQueries(qc, leadId);
+    } catch (error) {
+      restoreSnapshot();
+      invalidateLeadActionQueries(qc, leadId);
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel concluir a acao.");
+    }
+  }, UNDO_WINDOW_MS);
+
+  const pendingAction: PendingLeadUndo = {
+    timeoutId,
+    restoreSnapshot,
+  };
+
+  let toastId: string | number | undefined;
+  const undoAction = () => {
+    clearTimeout(timeoutId);
+    restoreSnapshot();
+    if (toastId !== undefined) {
+      toast.dismiss(toastId);
+    }
+    pendingLeadUndos.delete(leadId);
+  };
+
+  toastId = toast.success(toastMessage, {
+    duration: UNDO_WINDOW_MS,
+    action: {
+      label: "Desfazer",
+      onClick: undoAction,
+    },
+  });
+
+  pendingAction.toastId = toastId;
+  pendingLeadUndos.set(leadId, pendingAction);
+};
 
 export const useStages = (funnelId?: string | null, enabled = true) => {
   return useQuery({
@@ -476,41 +672,59 @@ export const useUpdateLead = (options?: { errorMessage?: string }) => {
 export const useArchiveLead = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
-      const data = await invokeLeadsApi<{ lead: Lead }>({ action: "archive", id });
-      return data.lead;
-    },
-    onSuccess: (updatedLead, id) => {
-      qc.setQueryData<Lead>(["lead", id], updatedLead);
-      qc.invalidateQueries({ queryKey: ["leads"] });
-      qc.invalidateQueries({ queryKey: ["lead", id] });
-      qc.invalidateQueries({ queryKey: ["lead_activities", id] });
-      qc.invalidateQueries({ queryKey: ["crm_notifications_feed"] });
-      toast.success("Negócio arquivado");
+    mutationFn: async (input: LeadActionInput) => {
+      await scheduleUndoableLeadAction({
+        qc,
+        input,
+        toastMessage: "Negocio arquivado",
+        applyOptimistic: (lead) => {
+          if (!lead) return;
+          applyLeadArchiveStateToCache(qc, {
+            ...lead,
+            is_archived: true,
+            archived_at: new Date().toISOString(),
+          });
+        },
+        commit: async (leadId) => {
+          const data = await invokeLeadsApi<{ lead: Lead }>({ action: "archive", id: leadId });
+          return data.lead;
+        },
+        onCommitSuccess: (updatedLead) => {
+          applyLeadArchiveStateToCache(qc, updatedLead);
+        },
+      });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 };
-
 export const useRestoreLead = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
-      const data = await invokeLeadsApi<{ lead: Lead }>({ action: "restore", id });
-      return data.lead;
-    },
-    onSuccess: (updatedLead, id) => {
-      qc.setQueryData<Lead>(["lead", id], updatedLead);
-      qc.invalidateQueries({ queryKey: ["leads"] });
-      qc.invalidateQueries({ queryKey: ["lead", id] });
-      qc.invalidateQueries({ queryKey: ["lead_activities", id] });
-      qc.invalidateQueries({ queryKey: ["crm_notifications_feed"] });
-      toast.success("Negócio restaurado");
+    mutationFn: async (input: LeadActionInput) => {
+      await scheduleUndoableLeadAction({
+        qc,
+        input,
+        toastMessage: "Negocio desarquivado",
+        applyOptimistic: (lead) => {
+          if (!lead) return;
+          applyLeadArchiveStateToCache(qc, {
+            ...lead,
+            is_archived: false,
+            archived_at: null,
+          });
+        },
+        commit: async (leadId) => {
+          const data = await invokeLeadsApi<{ lead: Lead }>({ action: "restore", id: leadId });
+          return data.lead;
+        },
+        onCommitSuccess: (updatedLead) => {
+          applyLeadArchiveStateToCache(qc, updatedLead);
+        },
+      });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 };
-
 export const useReopenLead = () => {
   const qc = useQueryClient();
   return useMutation({
@@ -537,12 +751,18 @@ export const useReopenLead = () => {
 export const useDeleteLead = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
-      await invokeLeadsApi<{ ok: boolean }>({ action: "delete", id });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["leads"] });
-      toast.success("Lead excluído");
+    mutationFn: async (input: LeadActionInput) => {
+      await scheduleUndoableLeadAction({
+        qc,
+        input,
+        toastMessage: "Lead excluido",
+        applyOptimistic: () => {
+          applyLeadDeletionToCache(qc, getLeadActionId(input));
+        },
+        commit: async (leadId) => {
+          await invokeLeadsApi<{ ok: boolean }>({ action: "delete", id: leadId });
+        },
+      });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -764,3 +984,4 @@ export const downloadAttachment = async (path: string, fileName: string) => {
   a.href = url; a.download = fileName; a.click();
   URL.revokeObjectURL(url);
 };
+

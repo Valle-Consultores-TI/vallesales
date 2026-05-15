@@ -66,6 +66,7 @@ import { formatCurrency } from "@/lib/constants";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { startOfLocalDay } from "@/lib/date";
+import { buildLeadSearchText } from "@/lib/lead-search";
 import { needsActionToday } from "@/lib/priority";
 
 type StatusFilter = "todos" | "atrasados" | "sem_contato" | "follow_hoje" | "acao_hoje";
@@ -132,10 +133,7 @@ const Index = () => {
       if (onlyMine && lead.owner_id !== user?.id) return false;
 
       if (q) {
-        const haystack = [lead.company_or_person, lead.contact_name, lead.email, lead.phone, lead.city]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
+        const haystack = buildLeadSearchText(lead);
         if (!haystack.includes(q)) return false;
       }
 
@@ -777,7 +775,7 @@ const Index = () => {
             "Deseja arquivar este negócio? Ele sairá do funil principal, mas continuará salvo no histórico e o contato permanecerá na aba Contatos.",
           );
           if (!shouldArchive) return;
-          await archiveLead.mutateAsync(selectedLead.id);
+          await archiveLead.mutateAsync(selectedLead);
           setDetailsOpen(false);
           setSelectedLead(null);
         } : undefined}
