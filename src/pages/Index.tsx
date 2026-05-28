@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { useArchiveLead, useStages, useLeads, useProfiles } from "@/hooks/useLeads";
+import { useArchiveLead, useCreateCustomerTrackingFromLead, useStages, useLeads, useProfiles } from "@/hooks/useLeads";
 import { usePermissions } from "@/hooks/useUserRoles";
 import { useActiveFunnel } from "@/hooks/useActiveFunnel";
 import { useCreateFunnel, useDeleteFunnel, useRenameFunnel } from "@/hooks/useFunnels";
@@ -73,6 +73,7 @@ import { buildLeadSearchText } from "@/lib/lead-search";
 import { needsActionToday } from "@/lib/priority";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { isValleSalesFunnel } from "@/lib/customer-tracking";
 
 type StatusFilter = "todos" | "atrasados" | "sem_contato" | "follow_hoje" | "acao_hoje";
 
@@ -88,6 +89,7 @@ const Index = () => {
   const createFunnel = useCreateFunnel();
   const deleteFunnel = useDeleteFunnel();
   const renameFunnel = useRenameFunnel();
+  const createCustomerTracking = useCreateCustomerTrackingFromLead();
   const profiles = useProfiles();
   const archiveLead = useArchiveLead();
   const perms = usePermissions();
@@ -210,6 +212,27 @@ const Index = () => {
     if (!perms.canEditOwnLead) return false;
     return lead.owner_id === user?.id || lead.created_by === user?.id;
   }, [perms.canEditAnyLead, perms.canEditOwnLead, user?.id]);
+
+  const getWonLeadTransferActions = useCallback((lead: Lead) => {
+    if (!isValleSalesFunnel(activeFunnel?.name)) return [];
+    return [
+      { flow: "opening_company" as const, label: "Enviar para fluxo de abertura de empresa" },
+      { flow: "existing_company" as const, label: "Enviar para fluxo de Ja possui CNPJ" },
+    ];
+  }, [activeFunnel?.name]);
+
+  const handleTransferWonLead = useCallback(async (lead: Lead, targetFlow: "opening_company" | "existing_company") => {
+    await createCustomerTracking.mutateAsync({
+      leadId: lead.id,
+      targetFlow,
+    });
+
+    if (selectedLead?.id === lead.id) {
+      setDetailsOpen(false);
+      setSelectedLead(null);
+      setHighlightedLeadId(null);
+    }
+  }, [createCustomerTracking, selectedLead?.id]);
 
   useEffect(() => {
     const notificationFunnelId = searchParams.get("funnelId");
@@ -863,6 +886,15 @@ const Index = () => {
                 canRenameStages={canRenameStages}
                 canCreateStages={canCreateStages}
                 canDeleteStages={perms.canManageTeam}
+                wonDialogDescription={
+                  isValleSalesFunnel(activeFunnel?.name)
+                    ? "Escolha se este cliente deve permanecer no funil comercial ou seguir para um dos fluxos de acompanhamento."
+                    : undefined
+                }
+                showWonArchiveAction={!isValleSalesFunnel(activeFunnel?.name)}
+                showWonCancelAction={!isValleSalesFunnel(activeFunnel?.name)}
+                getWonLeadTransferActions={getWonLeadTransferActions}
+                onWonLeadTransfer={handleTransferWonLead}
               />
             )}
           </div>
@@ -875,6 +907,15 @@ const Index = () => {
         onOpenChange={setFormOpen}
         lead={editLead}
         defaultStageId={defaultStage}
+        wonDialogDescription={
+          isValleSalesFunnel(activeFunnel?.name)
+            ? "Escolha se este cliente deve permanecer no funil comercial ou seguir para um dos fluxos de acompanhamento."
+            : undefined
+        }
+        showWonArchiveAction={!isValleSalesFunnel(activeFunnel?.name)}
+        showWonCancelAction={!isValleSalesFunnel(activeFunnel?.name)}
+        getWonLeadTransferActions={getWonLeadTransferActions}
+        onWonLeadTransfer={handleTransferWonLead}
       />
 
       <LeadDetailsSheet
@@ -892,6 +933,8 @@ const Index = () => {
             openEdit(selectedLead);
           }
         }}
+        getTrackingTransferActions={getWonLeadTransferActions}
+        onTrackingTransfer={handleTransferWonLead}
         archiveLead={selectedLead ? async () => {
           const shouldArchive = window.confirm(
             "Deseja arquivar este negócio? Ele sairá do funil principal, mas continuará salvo no histórico e o contato permanecerá na aba Contatos.",

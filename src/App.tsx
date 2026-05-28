@@ -12,12 +12,14 @@ import Index from "./pages/Index.tsx";
 import Contacts from "./pages/Contatos.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import ArchivedLeads from "./pages/Arquivados.tsx";
+import AcompanhamentoClientes from "./pages/AcompanhamentoClientes.tsx";
 import Configuracoes from "./pages/Configuracoes.tsx";
 import AguardandoAprovacao from "./pages/AguardandoAprovacao.tsx";
 import Auth from "./pages/Auth.tsx";
 import PublicLeadForm from "./pages/PublicLeadForm.tsx";
 import PublicCwkForm from "./pages/PublicCwkForm.tsx";
 import ReferralProgram from "./pages/ReferralProgram.tsx";
+import TrackingLookupPage from "./pages/TrackingLookupPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient({
@@ -58,6 +60,7 @@ const App = () => (
                   <Route path="/fale-conosco" element={<PublicLeadForm />} />
                   <Route path="/programa-indicacao" element={<ReferralProgram />} />
                   <Route path="/indicacoes" element={<ReferralProgram />} />
+                  <Route path="/acompanhar" element={<TrackingLookupPage />} />
                   <Route path="/cwk/ficha-cadastral" element={<PublicCwkForm />} />
                   <Route path="/ficha-cwk" element={<PublicCwkForm />} />
                   <Route path="/aguardando-aprovacao" element={<ProtectedRoute><AguardandoAprovacao /></ProtectedRoute>} />
@@ -65,6 +68,7 @@ const App = () => (
                   <Route path="/contatos" element={<ProtectedRoute><Contacts /></ProtectedRoute>} />
                   <Route path="/arquivados" element={<ProtectedRoute><ArchivedLeads /></ProtectedRoute>} />
                   <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                  <Route path="/acompanhamento" element={<ProtectedRoute><AcompanhamentoClientes /></ProtectedRoute>} />
                   <Route path="/configuracoes" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />
                   <Route path="/configuracoes/aparencia" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />
                   <Route path="/configuracoes/equipe" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />

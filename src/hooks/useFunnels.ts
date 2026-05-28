@@ -1,32 +1,49 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import type { Funnel, FunnelAccessOption } from "@/types/crm";
+import type { Funnel, FunnelAccessOption, FunnelModule } from "@/types/crm";
 
-export const useFunnels = (enabled = true) => {
+type FunnelQueryOptions = {
+  module?: FunnelModule | "all";
+};
+
+const resolveFunnelModule = (funnel: { module?: string | null }) =>
+  funnel.module === "customer_tracking" ? "customer_tracking" : "sales";
+
+const filterFunnelsByModule = <T extends { module?: string | null }>(
+  funnels: T[],
+  module: FunnelModule | "all" = "sales",
+) => (module === "all" ? funnels : funnels.filter((funnel) => resolveFunnelModule(funnel) === module));
+
+export const useFunnels = (enabled = true, options?: FunnelQueryOptions) => {
+  const module = options?.module ?? "sales";
+
   return useQuery({
-    queryKey: ["funnels"],
+    queryKey: ["funnels", module],
     enabled,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("funnels")
         .select("*")
+        .order("module")
         .order("is_default", { ascending: false })
         .order("name");
       if (error) throw error;
-      return (data ?? []) as Funnel[];
+      return filterFunnelsByModule((data ?? []) as Funnel[], module);
     },
   });
 };
 
-export const useFunnelAccessOptions = (enabled = true) => {
+export const useFunnelAccessOptions = (enabled = true, options?: FunnelQueryOptions) => {
+  const module = options?.module ?? "sales";
+
   return useQuery({
-    queryKey: ["funnel_access_options"],
+    queryKey: ["funnel_access_options", module],
     enabled,
     queryFn: async () => {
       const { data, error } = await supabase.rpc("list_funnels_with_access");
       if (error) throw error;
-      return (data ?? []) as FunnelAccessOption[];
+      return filterFunnelsByModule((data ?? []) as FunnelAccessOption[], module);
     },
   });
 };

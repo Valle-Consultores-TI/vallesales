@@ -30,6 +30,9 @@ const authClient = createClient(supabaseUrl, serviceRoleKey, {
 type AppRole = "admin" | "gestor" | "consultor" | "visualizador";
 type UserAccessStatus = "pending" | "active" | "suspended" | "inactive";
 type ArchivedSelection = "active" | "archived" | "all";
+type LeadEntityKind = "lead" | "customer_tracking";
+type LeadEntitySelection = LeadEntityKind | "all";
+type TrackingFlowKey = "opening_company" | "existing_company";
 
 type LeadPayload = Record<string, unknown>;
 type AdditionalContactPayload = {
@@ -49,6 +52,10 @@ type LeadRow = Record<string, unknown> & {
   contact_name?: string | null;
   company_or_person?: string | null;
   stage_id?: string | null;
+  entity_kind?: LeadEntityKind | null;
+  tracking_flow_key?: TrackingFlowKey | null;
+  source_lead_id?: string | null;
+  tracking_code?: string | null;
 };
 
 const allowedLeadFields = new Set([
@@ -326,6 +333,40 @@ const normalizeLead = (lead: LeadRow | null) => {
   };
 };
 
+const attachTrackingCodes = async (leads: LeadRow[]) => {
+  const trackingLeadIds = Array.from(
+    new Set(
+      leads
+        .filter((lead) => (lead.entity_kind ?? "lead") === "customer_tracking" && typeof lead.id === "string")
+        .map((lead) => String(lead.id)),
+    ),
+  );
+
+  if (trackingLeadIds.length === 0) return leads;
+
+  const projectRows = await sql`
+    select current_tracking_lead_id::text as lead_id, tracking_code
+    from public.project_tracking_projects
+    where current_tracking_lead_id = any(${trackingLeadIds})
+  `;
+
+  const trackingCodeByLeadId = new Map(
+    projectRows.map((row) => [String(row.lead_id), (row.tracking_code as string | null) ?? null]),
+  );
+
+  return leads.map((lead) => (
+    (lead.entity_kind ?? "lead") === "customer_tracking"
+      ? { ...lead, tracking_code: trackingCodeByLeadId.get(String(lead.id)) ?? null }
+      : lead
+  ));
+};
+
+const attachTrackingCode = async (lead: LeadRow | null) => {
+  if (!lead) return lead;
+  const [nextLead] = await attachTrackingCodes([lead]);
+  return nextLead ?? lead;
+};
+
 const roleFlags = (roles: AppRole[]) => {
   const has = (role: AppRole) => roles.includes(role);
   const isAdmin = has("admin");
@@ -505,6 +546,17 @@ const getStageSnapshot = async (stageId: string | null | undefined) => {
   return stage ?? null;
 };
 
+const getFunnelSnapshot = async (funnelId: string | null | undefined) => {
+  if (!funnelId) return null;
+  const [funnel] = await sql`
+    select id, name, module, tracking_flow_key, access_funnel_id
+    from public.funnels
+    where id = ${funnelId}
+    limit 1
+  `;
+  return funnel ?? null;
+};
+
 const getFirstActiveStage = async (funnelId: string | null | undefined) => {
   if (!funnelId) return null;
   const [stage] = await sql`
@@ -519,18 +571,42 @@ const getFirstActiveStage = async (funnelId: string | null | undefined) => {
   return stage ?? null;
 };
 
+const getTrackingFunnel = async ({
+  accessFunnelId,
+  targetFlow,
+}: {
+  accessFunnelId: string;
+  targetFlow: TrackingFlowKey;
+}) => {
+  const [funnel] = await sql`
+    select id, name, module, tracking_flow_key, access_funnel_id
+    from public.funnels
+    where module = 'customer_tracking'
+      and access_funnel_id = ${accessFunnelId}
+      and tracking_flow_key = ${targetFlow}
+    limit 1
+  `;
+
+  return funnel ?? null;
+};
+
 const parseArchivedSelection = (value: unknown): ArchivedSelection => {
   if (value === "archived" || value === "all") return value;
   return "active";
 };
 
-const runAutoArchiveSweep = async () => {
-  try {
-    await sql`select public.archive_expired_terminal_leads()`;
-  } catch (error) {
-    console.warn("Falha ao executar o autoarquivamento de negocios fechados.", error);
-  }
+const parseLeadEntitySelection = (value: unknown): LeadEntitySelection => {
+  if (value === "customer_tracking" || value === "all") return value;
+  return "lead";
 };
+
+const normalizeTrackingFlowKey = (value: unknown): TrackingFlowKey | null => {
+  if (value === "opening_company" || value === "existing_company") return value;
+  return null;
+};
+
+const getTrackingFlowLabel = (flowKey: TrackingFlowKey) =>
+  flowKey === "opening_company" ? "Abertura de empresa" : "Ja possui CNPJ";
 
 const contactNotificationFields = [
   "company_or_person",
@@ -573,10 +649,9 @@ serve(async (req) => {
     const action = body.action || "list";
     const requestedFunnelId = normalizeOptionalString(body.funnel_id);
     const archivedSelection = parseArchivedSelection(body.archived);
+    const entitySelection = parseLeadEntitySelection(body.entity_kind);
 
     if (action === "list") {
-      await runAutoArchiveSweep();
-
       if (requestedFunnelId) {
         assertFunnelAccess(session, requestedFunnelId);
       }
@@ -600,25 +675,43 @@ serve(async (req) => {
                 order by position asc, created_at desc
               `
           : [];
+      const activeTrackingSourceLeadIds = new Set(
+        rows
+          .filter((lead) =>
+            (lead.entity_kind ?? "lead") === "customer_tracking" &&
+            !lead.is_archived &&
+            typeof lead.source_lead_id === "string" &&
+            lead.source_lead_id.length > 0,
+          )
+          .map((lead) => String(lead.source_lead_id)),
+      );
       const filtered = rows.filter((lead) => {
         if (!canAccessLead(lead, session)) return false;
         if (requestedFunnelId && lead.funnel_id !== requestedFunnelId) return false;
         if (archivedSelection === "active" && lead.is_archived) return false;
         if (archivedSelection === "archived" && !lead.is_archived) return false;
+        if (entitySelection !== "all" && (lead.entity_kind ?? "lead") !== entitySelection) return false;
+        if (
+          entitySelection === "lead" &&
+          archivedSelection === "active" &&
+          activeTrackingSourceLeadIds.has(String(lead.id))
+        ) {
+          return false;
+        }
         return true;
       });
-      return json({ leads: filtered.map(normalizeLead) });
+      const hydrated = await attachTrackingCodes(filtered as LeadRow[]);
+      return json({ leads: hydrated.map(normalizeLead) });
     }
 
     if (action === "get") {
-      await runAutoArchiveSweep();
-
       const id = body.id as string | undefined;
       if (!id) return fail("Lead nao informado.");
       const [lead] = await sql`select * from public.leads where id = ${id} limit 1`;
       if (!lead) return fail("Lead nao encontrado.", 404);
       if (!canAccessLead(lead, session)) return fail("Acesso negado ao lead.", 403);
-      return json({ lead: normalizeLead(lead) });
+      const hydratedLead = await attachTrackingCode(lead as LeadRow);
+      return json({ lead: normalizeLead(hydratedLead) });
     }
 
     if (action === "create") {
@@ -637,7 +730,7 @@ serve(async (req) => {
           cnpj, source, segment, segment_other, city, uf, owner_id, estimated_value, temperature, stage_id,
           has_been_contacted, contact_method, next_follow_up, loss_reason, notes, additional_contacts, tax_regime,
           monthly_revenue_managerial, monthly_revenue_fiscal, monthly_invoice_count, payroll_gross_value,
-          bank_account_count, bank_accounts_split, financial_system, accounting_pain_points, company_maturity,
+          bank_account_count, bank_accounts_split, financial_system, accounting_pain_points, company_maturity, entity_kind,
           service_types, service_details, position, created_by, updated_by
         ) values (
           ${lead.funnel_id as string}, ${lead.company_or_person as string}, ${lead.contact_name ?? null}, ${lead.phone ?? null},
@@ -649,14 +742,15 @@ serve(async (req) => {
           ${lead.additional_contacts ?? []}, ${lead.tax_regime ?? null}, ${lead.monthly_revenue_managerial ?? null},
           ${lead.monthly_revenue_fiscal ?? null}, ${lead.monthly_invoice_count ?? null}, ${lead.payroll_gross_value ?? null},
           ${lead.bank_account_count ?? null}, ${lead.bank_accounts_split ?? null}, ${lead.financial_system ?? null},
-          ${lead.accounting_pain_points ?? null}, ${lead.company_maturity ?? null}, ${lead.service_types ?? []},
+          ${lead.accounting_pain_points ?? null}, ${lead.company_maturity ?? null}, ${"lead"}, ${lead.service_types ?? []},
           ${lead.service_details ?? null},
           ${lead.position ?? 0}, ${userId}, ${userId}
         )
         returning *
       `;
       await logActivity(created.id, "lead_created", `Lead criado: ${created.company_or_person}`, userId);
-      return json({ lead: normalizeLead(created) }, 201);
+      const hydratedLead = await attachTrackingCode(created as LeadRow);
+      return json({ lead: normalizeLead(hydratedLead) }, 201);
     }
 
     if (action === "update") {
@@ -693,7 +787,10 @@ serve(async (req) => {
 
       updates.updated_by = userId;
       const entries = Object.entries(updates);
-      if (entries.length === 1) return json({ lead: current });
+      if (entries.length === 1) {
+        const hydratedLead = await attachTrackingCode(current as LeadRow);
+        return json({ lead: normalizeLead(hydratedLead) });
+      }
 
       const values = entries.map(([, value]) => value);
       const setSql = entries.map(([key], index) => `"${key}" = $${index + 1}`).join(", ");
@@ -738,7 +835,213 @@ serve(async (req) => {
         );
       }
 
-      return json({ lead: normalizeLead(updated) });
+      const hydratedLead = await attachTrackingCode(updated as LeadRow);
+      return json({ lead: normalizeLead(hydratedLead) });
+    }
+
+    if (action === "create_tracking_from_lead") {
+      const id = body.id as string | undefined;
+      const targetFlow = normalizeTrackingFlowKey(body.target_flow);
+      if (!id) return fail("Lead nao informado.");
+      if (!targetFlow) return fail("Fluxo de acompanhamento invalido.");
+
+      const [current] = await sql`select * from public.leads where id = ${id} limit 1`;
+      if (!current) return fail("Lead nao encontrado.", 404);
+      if (!canEditLeadRecord(current, session)) return fail("Sem permissao para acompanhar este cliente.", 403);
+      if ((current.entity_kind ?? "lead") !== "lead") {
+        return fail("Apenas leads comerciais podem iniciar um acompanhamento.", 400);
+      }
+      const currentStage = await getStageSnapshot(current.stage_id);
+      if (!currentStage?.is_won) {
+        return fail("O acompanhamento so pode ser iniciado para clientes ja finalizados no funil comercial.", 400);
+      }
+
+      const sourceFunnel = await getFunnelSnapshot(current.funnel_id);
+      const accessFunnelId = sourceFunnel?.access_funnel_id ?? sourceFunnel?.id ?? null;
+      if (!sourceFunnel || !accessFunnelId) {
+        return fail("Nao foi possivel identificar o funil de origem deste lead.", 400);
+      }
+
+      const targetFunnel = await getTrackingFunnel({
+        accessFunnelId,
+        targetFlow,
+      });
+      if (!targetFunnel) {
+        return fail("O fluxo de acompanhamento solicitado nao esta configurado.", 400);
+      }
+
+      assertFunnelAccess(session, targetFunnel.id);
+
+      const [existingTrackingLead] = await sql`
+        select *
+        from public.leads
+        where entity_kind = 'customer_tracking'
+          and source_lead_id = ${current.id}
+          and is_archived = false
+        order by created_at desc
+        limit 1
+      `;
+
+      if (existingTrackingLead) {
+        if (existingTrackingLead.tracking_flow_key === targetFlow) {
+          if (!current.is_archived) {
+            await sql`
+              update public.leads
+              set is_archived = true,
+                  archived_by = ${userId},
+                  updated_by = ${userId}
+              where id = ${current.id}
+            `;
+
+            await logActivity(
+              current.id,
+              "lead_updated",
+              `Lead comercial removido do funil e vinculado ao acompanhamento "${existingTrackingLead.company_or_person ?? existingTrackingLead.contact_name ?? "Cliente"}".`,
+              userId,
+              {
+                mode: "moved_to_tracking",
+                tracking_lead_id: existingTrackingLead.id,
+                target_funnel_id: existingTrackingLead.funnel_id,
+              },
+            );
+          }
+
+          const hydratedLead = await attachTrackingCode(existingTrackingLead as LeadRow);
+          return json({ lead: normalizeLead(hydratedLead) });
+        }
+
+        return fail(
+          `Este cliente ja esta em acompanhamento no fluxo "${getTrackingFlowLabel(existingTrackingLead.tracking_flow_key as TrackingFlowKey)}".`,
+          400,
+        );
+      }
+
+      const firstTrackingStage = await getFirstActiveStage(targetFunnel.id);
+      if (!firstTrackingStage) {
+        return fail("Nenhuma etapa ativa foi encontrada para o fluxo de acompanhamento.", 400);
+      }
+
+      const [createdTrackingLead] = await sql`
+        insert into public.leads (
+          funnel_id, company_or_person, contact_name, phone, email, employee_count, employee_count_clt, employee_count_pj,
+          cnpj, source, segment, segment_other, city, uf, owner_id, estimated_value, temperature, stage_id,
+          has_been_contacted, contact_method, next_follow_up, loss_reason, notes, additional_contacts, tax_regime,
+          monthly_revenue_managerial, monthly_revenue_fiscal, monthly_invoice_count, payroll_gross_value,
+          bank_account_count, bank_accounts_split, financial_system, accounting_pain_points, company_maturity,
+          entity_kind, tracking_flow_key, source_lead_id, service_types, service_details, position, created_by, updated_by
+        ) values (
+          ${targetFunnel.id}, ${current.company_or_person}, ${current.contact_name}, ${current.phone}, ${current.email},
+          ${current.employee_count}, ${current.employee_count_clt}, ${current.employee_count_pj}, ${current.cnpj},
+          ${current.source}, ${current.segment}, ${current.segment_other}, ${current.city}, ${current.uf}, ${current.owner_id},
+          ${current.estimated_value ?? 0}, ${current.temperature ?? "morno"}, ${firstTrackingStage.id},
+          ${current.has_been_contacted ?? false}, ${current.contact_method ?? null}, ${current.next_follow_up ?? null},
+          ${null}, ${current.notes ?? null}, ${current.additional_contacts ?? []}, ${current.tax_regime ?? null},
+          ${current.monthly_revenue_managerial ?? null}, ${current.monthly_revenue_fiscal ?? null},
+          ${current.monthly_invoice_count ?? null}, ${current.payroll_gross_value ?? null}, ${current.bank_account_count ?? null},
+          ${current.bank_accounts_split ?? null}, ${current.financial_system ?? null}, ${current.accounting_pain_points ?? null},
+          ${current.company_maturity ?? null}, ${"customer_tracking"}, ${targetFlow}, ${current.id},
+          ${current.service_types ?? []}, ${current.service_details ?? null}, ${0}, ${userId}, ${userId}
+        )
+        returning *
+      `;
+
+      if (!current.is_archived) {
+        await sql`
+          update public.leads
+          set is_archived = true,
+              archived_by = ${userId},
+              updated_by = ${userId}
+          where id = ${current.id}
+        `;
+      }
+
+      await logActivity(
+        current.id,
+        "lead_updated",
+        `Cliente enviado para acompanhamento no fluxo "${targetFunnel.name}" e removido do funil comercial.`,
+        userId,
+        { tracking_lead_id: createdTrackingLead.id, target_funnel_id: targetFunnel.id },
+      );
+
+      await logActivity(
+        createdTrackingLead.id,
+        "lead_created",
+        `Acompanhamento iniciado a partir do lead comercial "${current.company_or_person ?? current.contact_name ?? "Lead"}".`,
+        userId,
+        { source_lead_id: current.id, flow_key: targetFlow },
+      );
+
+      const hydratedLead = await attachTrackingCode(createdTrackingLead as LeadRow);
+      return json({ lead: normalizeLead(hydratedLead) }, 201);
+    }
+
+    if (action === "transfer_tracking_flow") {
+      const id = body.id as string | undefined;
+      const targetFlow = normalizeTrackingFlowKey(body.target_flow);
+      if (!id) return fail("Cliente em acompanhamento nao informado.");
+      if (!targetFlow) return fail("Fluxo de destino invalido.");
+
+      const [current] = await sql`select * from public.leads where id = ${id} limit 1`;
+      if (!current) return fail("Cliente em acompanhamento nao encontrado.", 404);
+      if (!canEditLeadRecord(current, session)) return fail("Sem permissao para transferir este acompanhamento.", 403);
+      if ((current.entity_kind ?? "lead") !== "customer_tracking") {
+        return fail("Apenas clientes em acompanhamento podem ser transferidos entre fluxos.", 400);
+      }
+      if (current.tracking_flow_key === targetFlow) {
+        const hydratedLead = await attachTrackingCode(current as LeadRow);
+        return json({ lead: normalizeLead(hydratedLead) });
+      }
+
+      const currentFunnel = await getFunnelSnapshot(current.funnel_id);
+      const accessFunnelId = currentFunnel?.access_funnel_id ?? currentFunnel?.id ?? null;
+      if (!currentFunnel || !accessFunnelId) {
+        return fail("Nao foi possivel identificar o acesso base deste acompanhamento.", 400);
+      }
+
+      const targetFunnel = await getTrackingFunnel({
+        accessFunnelId,
+        targetFlow,
+      });
+      if (!targetFunnel) {
+        return fail("O fluxo de destino nao esta configurado.", 400);
+      }
+
+      assertFunnelAccess(session, targetFunnel.id);
+
+      const firstTrackingStage = await getFirstActiveStage(targetFunnel.id);
+      if (!firstTrackingStage) {
+        return fail("Nenhuma etapa ativa foi encontrada no fluxo de destino.", 400);
+      }
+
+      const [updatedTrackingLead] = await sql`
+        update public.leads
+        set funnel_id = ${targetFunnel.id},
+            stage_id = ${firstTrackingStage.id},
+            tracking_flow_key = ${targetFlow},
+            is_archived = false,
+            archived_at = null,
+            archived_by = null,
+            updated_by = ${userId}
+        where id = ${id}
+        returning *
+      `;
+
+      await logActivity(
+        id,
+        "stage_change",
+        `Cliente transferido para o fluxo "${targetFunnel.name}" na etapa "${firstTrackingStage.name}".`,
+        userId,
+        {
+          from_funnel_id: current.funnel_id,
+          to_funnel_id: targetFunnel.id,
+          from_flow_key: current.tracking_flow_key,
+          to_flow_key: targetFlow,
+          to_stage_id: firstTrackingStage.id,
+        },
+      );
+
+      const hydratedLead = await attachTrackingCode(updatedTrackingLead as LeadRow);
+      return json({ lead: normalizeLead(hydratedLead) });
     }
 
     if (action === "archive") {
@@ -750,12 +1053,14 @@ serve(async (req) => {
       if (!canEditLeadRecord(current, session)) return fail("Sem permissao para arquivar este lead.", 403);
 
       const currentStage = await getStageSnapshot(current.stage_id);
-      if (!currentStage?.is_won && !currentStage?.is_lost) {
+      const isTrackingLead = (current.entity_kind ?? "lead") === "customer_tracking";
+      if (!isTrackingLead && !currentStage?.is_won && !currentStage?.is_lost) {
         return fail("Somente negocios perdidos ou clientes podem ser arquivados.", 400);
       }
 
       if (current.is_archived) {
-        return json({ lead: normalizeLead(current) });
+        const hydratedLead = await attachTrackingCode(current as LeadRow);
+        return json({ lead: normalizeLead(hydratedLead) });
       }
 
       const [archivedLead] = await sql`
@@ -770,14 +1075,17 @@ serve(async (req) => {
       await logActivity(
         id,
         "lead_updated",
-        currentStage.is_lost
-          ? "Negocio perdido arquivado manualmente."
-          : "Negocio cliente arquivado manualmente.",
+        isTrackingLead
+          ? "Cliente em acompanhamento arquivado manualmente."
+          : currentStage?.is_lost
+            ? "Negocio perdido arquivado manualmente."
+            : "Negocio cliente arquivado manualmente.",
         userId,
         { mode: "manual_archive", stage_id: archivedLead.stage_id },
       );
 
-      return json({ lead: normalizeLead(archivedLead) });
+      const hydratedLead = await attachTrackingCode(archivedLead as LeadRow);
+      return json({ lead: normalizeLead(hydratedLead) });
     }
 
     if (action === "restore") {
@@ -789,7 +1097,8 @@ serve(async (req) => {
       if (!canEditLeadRecord(current, session)) return fail("Sem permissao para restaurar este lead.", 403);
 
       if (!current.is_archived) {
-        return json({ lead: normalizeLead(current) });
+        const hydratedLead = await attachTrackingCode(current as LeadRow);
+        return json({ lead: normalizeLead(hydratedLead) });
       }
 
       const [restoredLead] = await sql`
@@ -809,7 +1118,8 @@ serve(async (req) => {
         { mode: "restore_from_archive", stage_id: restoredLead.stage_id },
       );
 
-      return json({ lead: normalizeLead(restoredLead) });
+      const hydratedLead = await attachTrackingCode(restoredLead as LeadRow);
+      return json({ lead: normalizeLead(hydratedLead) });
     }
 
     if (action === "reopen") {
@@ -864,7 +1174,8 @@ serve(async (req) => {
         { mode: "reopen", stage_id: targetStage.id },
       );
 
-      return json({ lead: normalizeLead(reopenedLead) });
+      const hydratedLead = await attachTrackingCode(reopenedLead as LeadRow);
+      return json({ lead: normalizeLead(hydratedLead) });
     }
 
     if (action === "delete") {
@@ -874,6 +1185,13 @@ serve(async (req) => {
       const [lead] = await sql`select * from public.leads where id = ${id} limit 1`;
       if (!lead) return fail("Lead nao encontrado.", 404);
       if (!canAccessLead(lead, session)) return fail("Sem permissao para excluir este lead.", 403);
+      if ((lead.entity_kind ?? "lead") === "lead") {
+        await sql`
+          delete from public.leads
+          where entity_kind = 'customer_tracking'
+            and source_lead_id = ${id}
+        `;
+      }
       await sql`delete from public.leads where id = ${id}`;
       return json({ ok: true });
     }

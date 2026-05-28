@@ -1,7 +1,15 @@
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import type { Lead, LeadInsert, LeadUpdate, PipelineStage, Profile } from "@/types/crm";
+import type {
+  Lead,
+  LeadEntityKind,
+  LeadInsert,
+  LeadUpdate,
+  PipelineStage,
+  Profile,
+  TrackingFlowKey,
+} from "@/types/crm";
 import { toast } from "sonner";
 import { useAuth } from "./useAuth";
 
@@ -104,6 +112,7 @@ const invokeLeadsApi = async <T>(body: Record<string, unknown>, retryOnAuthFailu
 
 const ALL_FUNNELS_KEY = "__all__";
 type LeadArchiveFilter = "active" | "archived" | "all";
+type LeadEntitySelection = LeadEntityKind | "all";
 const UNDO_WINDOW_MS = 5000;
 
 type LeadActionInput = string | Lead;
@@ -587,17 +596,19 @@ export const useDeletePipelineStage = () => {
 export const useLeads = (
   funnelId?: string | null,
   enabled = true,
-  options?: { archived?: LeadArchiveFilter },
+  options?: { archived?: LeadArchiveFilter; entityKind?: LeadEntitySelection },
 ) => {
   const archived = options?.archived ?? "active";
+  const entityKind = options?.entityKind ?? "lead";
 
   return useQuery({
-    queryKey: ["leads", funnelId ?? ALL_FUNNELS_KEY, archived],
+    queryKey: ["leads", funnelId ?? ALL_FUNNELS_KEY, archived, entityKind],
     enabled,
     queryFn: async () => {
       const data = await invokeLeadsApi<{ leads: Lead[] }>({
         action: "list",
         archived,
+        entity_kind: entityKind,
         funnel_id: funnelId ?? null,
       });
       return data.leads;
@@ -666,6 +677,83 @@ export const useUpdateLead = (options?: { errorMessage?: string }) => {
       qc.invalidateQueries({ queryKey: ["crm_notifications_feed"] });
     },
     onError: (e: Error) => toast.error(options?.errorMessage ?? e.message),
+  });
+};
+
+export const useCreateCustomerTrackingFromLead = () => {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      leadId,
+      targetFlow,
+    }: {
+      leadId: string;
+      targetFlow: TrackingFlowKey;
+    }) => {
+      const data = await invokeLeadsApi<{ lead: Lead }>({
+        action: "create_tracking_from_lead",
+        id: leadId,
+        target_flow: targetFlow,
+      });
+      return data.lead;
+    },
+    onSuccess: (_trackingLead, vars) => {
+      const cachedSourceLead =
+        qc.getQueryData<Lead>(["lead", vars.leadId]) ??
+        qc
+          .getQueriesData<Lead[]>({ queryKey: ["leads"] })
+          .flatMap(([, leads]) => leads ?? [])
+          .find((lead) => lead.id === vars.leadId);
+
+      if (cachedSourceLead) {
+        applyLeadArchiveStateToCache(qc, {
+          ...cachedSourceLead,
+          is_archived: true,
+          archived_at: new Date().toISOString(),
+        });
+      }
+
+      qc.invalidateQueries({
+        predicate: (query) => (
+          Array.isArray(query.queryKey) &&
+          query.queryKey[0] === "leads" &&
+          query.queryKey[3] === "customer_tracking"
+        ),
+      });
+      qc.invalidateQueries({ queryKey: ["lead", vars.leadId] });
+      qc.invalidateQueries({ queryKey: ["lead_activities", vars.leadId] });
+      qc.invalidateQueries({ queryKey: ["crm_notifications_feed"] });
+      toast.success("Cliente enviado para acompanhamento");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+};
+
+export const useTransferCustomerTrackingFlow = () => {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      leadId,
+      targetFlow,
+    }: {
+      leadId: string;
+      targetFlow: TrackingFlowKey;
+    }) => {
+      const data = await invokeLeadsApi<{ lead: Lead }>({
+        action: "transfer_tracking_flow",
+        id: leadId,
+        target_flow: targetFlow,
+      });
+      return data.lead;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["leads"] });
+      qc.invalidateQueries({ queryKey: ["crm_notifications_feed"] });
+      toast.success("Cliente transferido para o proximo fluxo");
+    },
+    onError: (error: Error) => toast.error(error.message),
   });
 };
 
@@ -755,7 +843,7 @@ export const useDeleteLead = () => {
       await scheduleUndoableLeadAction({
         qc,
         input,
-        toastMessage: "Lead excluido",
+        toastMessage: "Lead marcado para exclusao",
         applyOptimistic: () => {
           applyLeadDeletionToCache(qc, getLeadActionId(input));
         },

@@ -1,15 +1,18 @@
 import { Link } from "react-router-dom";
-import { Archive, ContactRound, Kanban, LayoutDashboard, LogOut, Settings } from "lucide-react";
+import { Archive, Briefcase, ContactRound, Kanban, LayoutDashboard, LogOut, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { useAuth } from "@/hooks/useAuth";
+import { useFunnelAccessOptions } from "@/hooks/useFunnels";
 import { cn } from "@/lib/utils";
 import valleSymbolWhite from "@/assets/valle-symbol-white.png";
 
-type AppHeaderSection = "funil" | "contatos" | "arquivados" | "dashboard" | "configuracoes";
+type AppHeaderSection = "funil" | "contatos" | "arquivados" | "dashboard" | "acompanhamento" | "configuracoes";
 
 export const AppHeader = ({ active }: { active: AppHeaderSection }) => {
   const { signOut, user } = useAuth();
+  const trackingFunnelsQuery = useFunnelAccessOptions(!!user, { module: "customer_tracking" });
+  const hasCustomerTrackingAccess = (trackingFunnelsQuery.data ?? []).some((funnel) => funnel.has_access);
 
   const navClass = (section: AppHeaderSection) =>
     cn(
@@ -57,6 +60,14 @@ export const AppHeader = ({ active }: { active: AppHeaderSection }) => {
               <span className="hidden md:inline">Dashboard</span>
             </Button>
           </Link>
+          {hasCustomerTrackingAccess && (
+            <Link to="/acompanhamento">
+              <Button variant="ghost" size="sm" className={navClass("acompanhamento")}>
+                <Briefcase className="h-4 w-4 md:mr-1.5" />
+                <span className="hidden md:inline">Acompanhamento</span>
+              </Button>
+            </Link>
+          )}
           <Link to="/configuracoes">
             <Button variant="ghost" size="sm" className={navClass("configuracoes")}>
               <Settings className="h-4 w-4 md:mr-1.5" />

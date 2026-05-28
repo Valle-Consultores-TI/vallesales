@@ -163,6 +163,7 @@ export type Database = {
           employee_count: string | null
           employee_count_clt: string | null
           employee_count_pj: string | null
+          entity_kind: string
           email: string | null
           estimated_value: number | null
           financial_system: string | null
@@ -187,11 +188,13 @@ export type Database = {
           segment: string | null
           segment_other: string | null
           source: string | null
+          source_lead_id: string | null
           service_details: string | null
           service_types: string[]
           stage_id: string
           tax_regime: string | null
           temperature: Database["public"]["Enums"]["lead_temperature"]
+          tracking_flow_key: string | null
           uf: string | null
           updated_at: string
           updated_by: string | null
@@ -215,6 +218,7 @@ export type Database = {
           employee_count?: string | null
           employee_count_clt?: string | null
           employee_count_pj?: string | null
+          entity_kind?: string
           email?: string | null
           estimated_value?: number | null
           financial_system?: string | null
@@ -237,11 +241,13 @@ export type Database = {
           segment?: string | null
           segment_other?: string | null
           source?: string | null
+          source_lead_id?: string | null
           service_details?: string | null
           service_types?: string[]
           stage_id: string
           tax_regime?: string | null
           temperature?: Database["public"]["Enums"]["lead_temperature"]
+          tracking_flow_key?: string | null
           uf?: string | null
           updated_at?: string
           updated_by?: string | null
@@ -265,6 +271,7 @@ export type Database = {
           employee_count?: string | null
           employee_count_clt?: string | null
           employee_count_pj?: string | null
+          entity_kind?: string
           email?: string | null
           estimated_value?: number | null
           financial_system?: string | null
@@ -287,11 +294,13 @@ export type Database = {
           segment?: string | null
           segment_other?: string | null
           source?: string | null
+          source_lead_id?: string | null
           service_details?: string | null
           service_types?: string[]
           stage_id?: string
           tax_regime?: string | null
           temperature?: Database["public"]["Enums"]["lead_temperature"]
+          tracking_flow_key?: string | null
           uf?: string | null
           updated_at?: string
           updated_by?: string | null
@@ -306,6 +315,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "leads_source_lead_id_fkey"
+            columns: ["source_lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "leads_stage_id_fkey"
             columns: ["stage_id"]
             isOneToOne: false
@@ -316,27 +332,44 @@ export type Database = {
       }
       funnels: {
         Row: {
+          access_funnel_id: string | null
           created_at: string
           id: string
           is_default: boolean
+          module: string
           name: string
+          tracking_flow_key: string | null
           updated_at: string
         }
         Insert: {
+          access_funnel_id?: string | null
           created_at?: string
           id?: string
           is_default?: boolean
+          module?: string
           name: string
+          tracking_flow_key?: string | null
           updated_at?: string
         }
         Update: {
+          access_funnel_id?: string | null
           created_at?: string
           id?: string
           is_default?: boolean
+          module?: string
           name?: string
+          tracking_flow_key?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "funnels_access_funnel_id_fkey"
+            columns: ["access_funnel_id"]
+            isOneToOne: false
+            referencedRelation: "funnels"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pipeline_stages: {
         Row: {
@@ -526,10 +559,13 @@ export type Database = {
           _name: string
         }
         Returns: {
+          access_funnel_id: string | null
           created_at: string
           id: string
           is_default: boolean
+          module: string
           name: string
+          tracking_flow_key: string | null
           updated_at: string
         }
       }
@@ -600,11 +636,14 @@ export type Database = {
       list_funnels_with_access: {
         Args: Record<PropertyKey, never>
         Returns: {
+          access_funnel_id: string | null
           created_at: string
           has_access: boolean
           id: string
           is_default: boolean
+          module: string
           name: string
+          tracking_flow_key: string | null
           updated_at: string
         }[]
       }
@@ -614,10 +653,13 @@ export type Database = {
           _name: string
         }
         Returns: {
+          access_funnel_id: string | null
           created_at: string
           id: string
           is_default: boolean
+          module: string
           name: string
+          tracking_flow_key: string | null
           updated_at: string
         }
       }

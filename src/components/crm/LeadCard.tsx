@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatDate } from "@/lib/constants";
 import {
   AlertTriangle,
+  Archive,
   Calendar,
   CheckCircle2,
   DollarSign,
@@ -16,6 +17,7 @@ import {
   Mail,
   MessageSquare,
   Phone,
+  Copy,
   User,
   UserX,
   Zap,
@@ -44,7 +46,10 @@ interface Props {
   stageName?: string | null;
   onClick: () => void;
   onDragStart: (e: React.DragEvent) => void;
+  onDragEnd?: (e: React.DragEvent) => void;
   draggable?: boolean;
+  onArchive?: () => void | Promise<void>;
+  archiveLabel?: string;
 }
 
 const tempStyles: Record<string, string> = {
@@ -88,7 +93,10 @@ export const LeadCard = ({
   stageName = null,
   onClick,
   onDragStart,
+  onDragEnd,
   draggable = true,
+  onArchive,
+  archiveLabel = "Arquivar",
 }: Props) => {
   const [exportingFormat, setExportingFormat] = useState<"pdf" | "excel" | null>(null);
 
@@ -105,6 +113,7 @@ export const LeadCard = ({
   const isCwkCard = (funnelName ?? "").toLowerCase().includes("cwk") || (lead.source ?? "").toLowerCase().includes("cwk");
   const sourceState = parseLeadSource(lead.source);
   const isReferralProgramLead = sourceState.is_referral_program;
+  const trackingCode = lead.entity_kind === "customer_tracking" ? lead.tracking_code?.trim() ?? "" : "";
 
   const handleExport = async (format: "pdf" | "excel") => {
     setExportingFormat(format);
@@ -130,11 +139,24 @@ export const LeadCard = ({
     }
   };
 
+  const handleCopyTrackingCode = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (!trackingCode) return;
+
+    try {
+      await navigator.clipboard.writeText(trackingCode);
+      toast.success("Codigo de acompanhamento copiado.");
+    } catch {
+      toast.error("Nao foi possivel copiar o codigo agora.");
+    }
+  };
+
   return (
     <Card
       id={`lead-card-${lead.id}`}
       draggable={draggable}
       onDragStart={draggable ? onDragStart : undefined}
+      onDragEnd={draggable ? onDragEnd : undefined}
       onClick={onClick}
       className={cn(
         "group relative cursor-pointer overflow-hidden border bg-card p-3 pl-3.5 shadow-xs",
@@ -241,6 +263,26 @@ export const LeadCard = ({
                 </span>
               </div>
             </DropdownMenuItem>
+            {onArchive && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="rounded-xl px-3 py-2.5 text-warning focus:text-warning"
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    void onArchive();
+                  }}
+                >
+                  <Archive className="mr-2 h-4 w-4" />
+                  <div className="flex min-w-0 flex-col">
+                    <span className="font-medium">{archiveLabel}</span>
+                    <span className="text-xs text-muted-foreground">
+                      Remove este card do fluxo ativo e envia para o historico
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -251,6 +293,23 @@ export const LeadCard = ({
             <span className="inline-flex items-center rounded-full bg-accent px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-accent-foreground shadow-sm">
               Valle Indicação
             </span>
+          )}
+          {trackingCode && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="inline-flex items-center rounded-full border border-accent/25 bg-accent/8 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-accent shadow-sm">
+                {trackingCode}
+              </span>
+              <button
+                type="button"
+                onClick={handleCopyTrackingCode}
+                onPointerDown={(event) => event.stopPropagation()}
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border/70 bg-background/92 text-muted-foreground transition-colors hover:border-accent/35 hover:bg-accent/5 hover:text-accent"
+                aria-label="Copiar codigo de acompanhamento"
+                title="Copiar codigo de acompanhamento"
+              >
+                <Copy className="h-2.5 w-2.5" />
+              </button>
+            </div>
           )}
           <h4 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground transition-colors group-hover:text-primary">
             {lead.company_or_person}

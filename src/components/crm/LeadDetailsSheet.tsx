@@ -25,9 +25,9 @@ import {
   useUploadAttachment,
   downloadAttachment,
 } from "@/hooks/useLeads";
-import { useActiveFunnel } from "@/hooks/useActiveFunnel";
 import { useAuth } from "@/hooks/useAuth";
-import type { Lead, PipelineStage, Profile } from "@/types/crm";
+import { useFunnelAccessOptions } from "@/hooks/useFunnels";
+import type { Lead, PipelineStage, Profile, TrackingFlowKey } from "@/types/crm";
 import { CONTACT_METHOD_OPTIONS, formatCurrency, formatDate, formatDateTime } from "@/lib/constants";
 import {
   Calendar,
@@ -48,11 +48,13 @@ import {
   Trash2,
   User as UserIcon,
   X,
+  Copy,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Card } from "@/components/ui/card";
 import { parseDateValue } from "@/lib/date";
 import { exportLeadAsExcel, exportLeadAsPdf } from "@/lib/lead-export";
+import { isValleSalesFunnel } from "@/lib/customer-tracking";
 import { COMPANY_MATURITY_LABELS, formatLeadSourceLabel, parseAdditionalContacts, parseLeadSource } from "@/lib/lead-form";
 import { toast } from "sonner";
 
@@ -69,6 +71,8 @@ interface Props {
   archiveLead?: () => Promise<void>;
   restoreLead?: () => Promise<void>;
   reopenLead?: () => Promise<void>;
+  getTrackingTransferActions?: (lead: Lead | null | undefined) => Array<{ flow: TrackingFlowKey; label: string }>;
+  onTrackingTransfer?: (lead: Lead, flow: TrackingFlowKey) => Promise<void>;
 }
 
 type AttachmentPeriodFilter = "all" | "today" | "last_7_days" | "last_30_days" | "this_month" | "last_month";
@@ -154,6 +158,8 @@ export const LeadDetailsSheet = ({
   archiveLead,
   restoreLead,
   reopenLead,
+  getTrackingTransferActions,
+  onTrackingTransfer,
 }: Props) => {
   const [newNote, setNewNote] = useState("");
   const [contactMethod, setContactMethod] = useState("whatsapp");
@@ -161,6 +167,7 @@ export const LeadDetailsSheet = ({
   const [selectedOwnerId, setSelectedOwnerId] = useState<string>("__none__");
   const [attachmentPeriodFilter, setAttachmentPeriodFilter] = useState<AttachmentPeriodFilter>("all");
   const [exportingFormat, setExportingFormat] = useState<"pdf" | "excel" | null>(null);
+  const [transferringFlow, setTransferringFlow] = useState<TrackingFlowKey | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const activities = useLeadActivities(lead?.id ?? null);
@@ -172,7 +179,7 @@ export const LeadDetailsSheet = ({
   const del = useDeleteLead();
   const updateLead = useUpdateLead({ errorMessage: "Não foi possível alterar o responsável." });
   const { data: assignableProfiles = [] } = useAssignableProfiles(lead?.funnel_id, !!lead?.funnel_id);
-  const { funnels } = useActiveFunnel();
+  const allFunnelsQuery = useFunnelAccessOptions(open, { module: "all" });
   const { user } = useAuth();
 
   useEffect(() => {
@@ -201,10 +208,18 @@ export const LeadDetailsSheet = ({
   if (!lead) return null;
 
   const stage = stages.find((item) => item.id === lead.stage_id);
-  const funnel = funnels.find((item) => item.id === lead.funnel_id);
+  const funnel = (allFunnelsQuery.data ?? []).find((item) => item.id === lead.funnel_id);
   const isArchived = lead.is_archived;
   const isWon = !!stage?.is_won;
   const isLost = !!stage?.is_lost;
+  const isValleClosedSalesLead = lead.entity_kind === "lead" && isWon && isValleSalesFunnel(funnel?.name);
+  const trackingTransferActions = getTrackingTransferActions?.(lead) ?? [];
+  const canSendToTrackingFlow = isValleClosedSalesLead && !isArchived && canEditLead && !!onTrackingTransfer && trackingTransferActions.length > 0;
+  const canArchiveLead = !isArchived && !!archiveLead && canEditLead && (
+    lead.entity_kind === "customer_tracking" ||
+    isLost ||
+    (isWon && !isValleClosedSalesLead)
+  );
   const additionalContacts = parseAdditionalContacts(lead.additional_contacts);
   const sourceState = parseLeadSource(lead.source);
   const isOpeningCompanyLead = lead.company_maturity === "opening_company";
@@ -212,6 +227,7 @@ export const LeadDetailsSheet = ({
   const isReferralProgramLead = sourceState.is_referral_program;
   const owner = profiles.find((profile) => profile.id === lead.owner_id);
   const ownerName = owner?.full_name || owner?.email || null;
+  const trackingCode = lead.entity_kind === "customer_tracking" ? lead.tracking_code?.trim() ?? "" : "";
   const assignableIds = new Set(assignableProfiles.map((profile) => profile.id));
   const ownerOptions = profiles.filter(
     (profile) => assignableIds.has(profile.id) || profile.id === lead.owner_id,
@@ -277,6 +293,31 @@ export const LeadDetailsSheet = ({
       toast.error(`Não foi possível exportar o lead em ${format === "pdf" ? "PDF" : "Excel"}.`);
     } finally {
       setExportingFormat(null);
+    }
+  };
+
+  const handleTrackingTransfer = async (flow: TrackingFlowKey) => {
+    if (!onTrackingTransfer) return;
+
+    setTransferringFlow(flow);
+    try {
+      await onTrackingTransfer(lead, flow);
+      onOpenChange(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel enviar o cliente para acompanhamento.");
+    } finally {
+      setTransferringFlow(null);
+    }
+  };
+
+  const handleCopyTrackingCode = async () => {
+    if (!trackingCode) return;
+
+    try {
+      await navigator.clipboard.writeText(trackingCode);
+      toast.success("Codigo de acompanhamento copiado.");
+    } catch {
+      toast.error("Nao foi possivel copiar o codigo agora.");
     }
   };
 
@@ -373,7 +414,7 @@ export const LeadDetailsSheet = ({
                       Reabrir
                     </Button>
                   )}
-                  {!isArchived && (isWon || isLost) && archiveLead && canEditLead && (
+                  {canArchiveLead && (
                     <Button
                       size="sm"
                       variant="secondary"
@@ -452,6 +493,23 @@ export const LeadDetailsSheet = ({
               />
             )}
             {funnel && <Info label="Negócio" value={funnel.name} />}
+            {trackingCode && (
+              <div className="col-span-2 rounded-xl border border-accent/20 bg-accent/5 p-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <Info label="Codigo de acompanhamento" value={trackingCode} />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0"
+                    onClick={handleCopyTrackingCode}
+                  >
+                    <Copy className="mr-2 h-3.5 w-3.5" />
+                    Copiar codigo
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <div className="col-span-2 space-y-1">
               <p className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -533,6 +591,32 @@ export const LeadDetailsSheet = ({
                 {lead.contact_name && <Info label="Nome" value={lead.contact_name} />}
                 {lead.phone && <Info label="Telefone" value={lead.phone} />}
                 {lead.email && <Info label="E-mail" value={lead.email} />}
+              </div>
+            </Card>
+          )}
+
+          {canSendToTrackingFlow && (
+            <Card className="space-y-3 border-accent/25 bg-accent/5 p-4">
+              <div>
+                <h4 className="text-sm font-semibold text-foreground">Enviar para acompanhamento</h4>
+                <p className="text-xs text-muted-foreground">
+                  Este cliente foi mantido no funil comercial. Quando quiser, voce pode envia-lo para o fluxo operacional adequado.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 md:flex-row">
+                {trackingTransferActions.map((action) => (
+                  <Button
+                    key={action.flow}
+                    type="button"
+                    variant="accent"
+                    className="h-auto whitespace-normal text-left"
+                    disabled={transferringFlow !== null}
+                    onClick={() => void handleTrackingTransfer(action.flow)}
+                  >
+                    {transferringFlow === action.flow && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {action.label}
+                  </Button>
+                ))}
               </div>
             </Card>
           )}

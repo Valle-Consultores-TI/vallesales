@@ -1,4 +1,5 @@
 import { Lead, PipelineStage, Profile } from "@/types/crm";
+import type { TrackingFlowKey } from "@/types/crm";
 import { LeadCard } from "./LeadCard";
 import { addLeadNoteEntry, useArchiveLead, useCreatePipelineStage, useDeletePipelineStage, useRenamePipelineStage, useUpdateLead } from "@/hooks/useLeads";
 import { Check, Loader2, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react";
@@ -43,6 +44,15 @@ interface Props {
   canDeleteStages: boolean;
   funnelId: string;
   funnelName?: string | null;
+  wonDialogTitle?: string;
+  wonDialogDescription?: string;
+  wonDialogKeepLabel?: string;
+  wonDialogArchiveLabel?: string;
+  showWonArchiveAction?: boolean;
+  showWonCancelAction?: boolean;
+  getWonLeadTransferActions?: (lead: Lead) => Array<{ flow: TrackingFlowKey; label: string }>;
+  onWonLeadTransfer?: (lead: Lead, flow: TrackingFlowKey) => Promise<void>;
+  onArchiveLead?: (lead: Lead) => Promise<void>;
 }
 
 const stageColorBar: Record<string, string> = {
@@ -69,6 +79,15 @@ export const KanbanBoard = ({
   canDeleteStages,
   funnelId,
   funnelName = null,
+  wonDialogTitle = "Cliente fechado",
+  wonDialogDescription = "Este cliente pode ser arquivado agora ou permanecer no funil ate que voce decida arquivar manualmente. O historico continuara salvo e o contato permanecera na aba Contatos.",
+  wonDialogKeepLabel = "Manter no funil",
+  wonDialogArchiveLabel = "Arquivar agora",
+  showWonArchiveAction = true,
+  showWonCancelAction = true,
+  getWonLeadTransferActions,
+  onWonLeadTransfer,
+  onArchiveLead,
 }: Props) => {
   const update = useUpdateLead();
   const archiveLead = useArchiveLead();
@@ -93,6 +112,8 @@ export const KanbanBoard = ({
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
   const stickyScrollbarRef = useRef<HTMLDivElement | null>(null);
   const syncingScrollRef = useRef<"board" | "sticky" | null>(null);
+  const dragPointerXRef = useRef<number | null>(null);
+  const autoScrollFrameRef = useRef<number | null>(null);
 
   const leadsByStage = useMemo(() => {
     const map: Record<string, Lead[]> = {};
@@ -143,6 +164,8 @@ export const KanbanBoard = ({
     if (options?.archiveAfter) {
       await archiveLead.mutateAsync(updatedLead);
     }
+
+    return updatedLead;
   };
 
   const handleDrop = async (stageId: string) => {
@@ -255,6 +278,21 @@ export const KanbanBoard = ({
     }
   };
 
+  const handleTransferWonLead = async (flow: TrackingFlowKey) => {
+    if (!wonLeadPending || !onWonLeadTransfer) return;
+
+    setSavingLostReason(true);
+    try {
+      const updatedLead = await finalizeLeadStageChange(wonLeadPending.lead, wonLeadPending.targetStageId);
+      await onWonLeadTransfer(updatedLead, flow);
+      setWonLeadPending(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "NÃ£o foi possÃ­vel concluir a transferÃªncia do cliente.");
+    } finally {
+      setSavingLostReason(false);
+    }
+  };
+
   useEffect(() => {
     const boardElement = boardScrollRef.current;
     if (!boardElement) return;
@@ -300,6 +338,81 @@ export const KanbanBoard = ({
       syncingScrollRef.current = null;
     });
   };
+
+  const stopDragAutoScroll = () => {
+    dragPointerXRef.current = null;
+
+    if (autoScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(autoScrollFrameRef.current);
+      autoScrollFrameRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    if (!draggedId) {
+      stopDragAutoScroll();
+      return;
+    }
+
+    const boardElement = boardScrollRef.current;
+    if (!boardElement) return;
+
+    const edgeThreshold = 140;
+    const maxStep = 28;
+
+    const tick = () => {
+      const pointerX = dragPointerXRef.current;
+      const board = boardScrollRef.current;
+
+      if (!board) {
+        autoScrollFrameRef.current = null;
+        return;
+      }
+
+      if (pointerX !== null) {
+        const rect = board.getBoundingClientRect();
+        let delta = 0;
+
+        if (pointerX < rect.left + edgeThreshold) {
+          const intensity = (rect.left + edgeThreshold - pointerX) / edgeThreshold;
+          delta = -Math.ceil(maxStep * Math.min(1, intensity));
+        } else if (pointerX > rect.right - edgeThreshold) {
+          const intensity = (pointerX - (rect.right - edgeThreshold)) / edgeThreshold;
+          delta = Math.ceil(maxStep * Math.min(1, intensity));
+        }
+
+        if (delta !== 0) {
+          const nextScrollLeft = Math.max(0, Math.min(board.scrollLeft + delta, board.scrollWidth - board.clientWidth));
+          if (nextScrollLeft !== board.scrollLeft) {
+            board.scrollLeft = nextScrollLeft;
+            syncHorizontalScroll("board");
+          }
+        }
+      }
+
+      autoScrollFrameRef.current = window.requestAnimationFrame(tick);
+    };
+
+    const handleWindowDragOver = (event: DragEvent) => {
+      dragPointerXRef.current = event.clientX;
+    };
+
+    const handleWindowDrop = () => {
+      setDraggedId(null);
+      setOverStageId(null);
+      stopDragAutoScroll();
+    };
+
+    window.addEventListener("dragover", handleWindowDragOver);
+    window.addEventListener("drop", handleWindowDrop);
+    autoScrollFrameRef.current = window.requestAnimationFrame(tick);
+
+    return () => {
+      window.removeEventListener("dragover", handleWindowDragOver);
+      window.removeEventListener("drop", handleWindowDrop);
+      stopDragAutoScroll();
+    };
+  }, [draggedId]);
 
   const renderInsertSlot = (stageId: string, slotKey: string) => (
     <div
@@ -427,18 +540,19 @@ export const KanbanBoard = ({
 
                       {editingStageId !== stage.id && (
                         <div className="flex shrink-0 items-center gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 shrink-0 text-muted-foreground/80 hover:bg-accent/10 hover:text-accent"
-                            onClick={() => onAddInStage(stage.id)}
-                            disabled={!canAddLead}
-                            aria-label={`Adicionar lead na fase ${stage.name}`}
-                            title="Adicionar lead"
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                          </Button>
+                          {canAddLead && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 shrink-0 text-muted-foreground/80 hover:bg-accent/10 hover:text-accent"
+                              onClick={() => onAddInStage(stage.id)}
+                              aria-label={`Adicionar lead na fase ${stage.name}`}
+                              title="Adicionar lead"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
 
                           {hasStageMenu && (
                             <DropdownMenu modal={false}>
@@ -534,11 +648,19 @@ export const KanbanBoard = ({
                             funnelName={funnelName}
                             stageName={stage.name}
                             isHighlighted={highlightedLeadId === lead.id}
+                            onArchive={onArchiveLead ? () => onArchiveLead(lead) : undefined}
+                            archiveLabel={lead.entity_kind === "customer_tracking" ? "Arquivar cliente" : "Arquivar lead"}
                             onClick={() => onSelectLead(lead)}
                             draggable={canMoveLead(lead)}
                             onDragStart={(event) => {
                               setDraggedId(lead.id);
+                              dragPointerXRef.current = event.clientX;
                               event.dataTransfer.effectAllowed = "move";
+                            }}
+                            onDragEnd={() => {
+                              setDraggedId(null);
+                              setOverStageId(null);
+                              stopDragAutoScroll();
                             }}
                           />
                         </div>
@@ -680,7 +802,7 @@ export const KanbanBoard = ({
           <DialogHeader>
             <DialogTitle>Marcar como perdido</DialogTitle>
             <DialogDescription>
-              O lead será movido para perdido. Escolha se deseja arquivar agora ou manter no funil por 3 dias.
+              O lead será movido para perdido. Escolha se deseja arquivar agora ou manter no funil para arquivar manualmente depois.
             </DialogDescription>
           </DialogHeader>
 
@@ -718,7 +840,7 @@ export const KanbanBoard = ({
               disabled={savingLostReason || !lossReason.trim()}
             >
               {savingLostReason && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Manter por 3 dias
+              Manter no funil
             </Button>
             <Button
               type="button"
@@ -741,26 +863,34 @@ export const KanbanBoard = ({
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Cliente fechado com arquivamento automático</DialogTitle>
-            <DialogDescription>
-              Este cliente permanecerá visível no funil por 3 dias. Após esse período, será arquivado automaticamente. O histórico continuará salvo e o contato permanecerá na aba Contatos.
-            </DialogDescription>
+            <DialogTitle>{wonDialogTitle}</DialogTitle>
+            <DialogDescription>{wonDialogDescription}</DialogDescription>
           </DialogHeader>
 
-          <DialogFooter className="gap-2 sm:gap-2">
-            <Button type="button" variant="ghost" onClick={() => setWonLeadPending(null)} disabled={savingLostReason}>
-              Cancelar
-            </Button>
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+            {showWonCancelAction && (
+              <Button type="button" variant="ghost" onClick={() => setWonLeadPending(null)} disabled={savingLostReason}>
+                Cancelar
+              </Button>
+            )}
             <Button type="button" variant="outline" onClick={() => void handleConfirmWonLead(false)} disabled={savingLostReason}>
               {savingLostReason && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Entendi
+              {wonDialogKeepLabel}
             </Button>
-            <Button type="button" variant="accent" onClick={() => void handleConfirmWonLead(true)} disabled={savingLostReason}>
-              {savingLostReason && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Arquivar agora
-            </Button>
+            {showWonArchiveAction && (
+              <Button type="button" variant="accent" className="h-auto whitespace-normal text-left" onClick={() => void handleConfirmWonLead(true)} disabled={savingLostReason}>
+                {savingLostReason && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {wonDialogArchiveLabel}
+              </Button>
+            )}
+            {wonLeadPending && onWonLeadTransfer && (getWonLeadTransferActions?.(wonLeadPending.lead) ?? []).map((action) => (
+              <Button key={action.flow} type="button" variant="accent" className="h-auto whitespace-normal text-left" onClick={() => void handleTransferWonLead(action.flow)} disabled={savingLostReason}>
+                {savingLostReason && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {action.label}
+              </Button>
+            ))}
           </DialogFooter>
         </DialogContent>
       </Dialog>

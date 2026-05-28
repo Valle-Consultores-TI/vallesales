@@ -1,6 +1,8 @@
 import type { Database } from "@/integrations/supabase/types";
 
-export type Lead = Database["public"]["Tables"]["leads"]["Row"];
+export type Lead = Database["public"]["Tables"]["leads"]["Row"] & {
+  tracking_code?: string | null;
+};
 export type LeadInsert = Database["public"]["Tables"]["leads"]["Insert"];
 export type LeadUpdate = Database["public"]["Tables"]["leads"]["Update"];
 
@@ -15,3 +17,7 @@ export type UserFunnelAccess = Database["public"]["Tables"]["user_funnel_access"
 
 export type Temperature = Database["public"]["Enums"]["lead_temperature"];
 export type ContactMethod = Database["public"]["Enums"]["contact_method"];
+
+export type LeadEntityKind = "lead" | "customer_tracking";
+export type FunnelModule = "sales" | "customer_tracking";
+export type TrackingFlowKey = "opening_company" | "existing_company";

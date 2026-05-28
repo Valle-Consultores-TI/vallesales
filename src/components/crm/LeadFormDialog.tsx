@@ -11,8 +11,10 @@ import { addLeadNoteEntry, useArchiveLead, useAssignableProfiles, useCreateLead,
 import { useActiveFunnel } from "@/hooks/useActiveFunnel";
 import { useAuth } from "@/hooks/useAuth";
 import { Lead } from "@/types/crm";
+import type { TrackingFlowKey } from "@/types/crm";
 import { CONTACT_METHOD_OPTIONS, SOURCE_OPTIONS, TEMPERATURE_OPTIONS, UF_OPTIONS } from "@/lib/constants";
 import {
+  COMPANY_MATURITY_OPTIONS,
   formatLeadSourceLabel,
   formatCnpj,
   formatPhone,
@@ -26,6 +28,7 @@ import {
   serializeLeadSource,
   TAX_REGIME_OPTIONS,
 } from "@/lib/lead-form";
+import { isValleSalesFunnel } from "@/lib/customer-tracking";
 import { Loader2, Plus, Trash2, UserCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -36,6 +39,11 @@ interface Props {
   onOpenChange: (o: boolean) => void;
   lead?: Lead | null;
   defaultStageId?: string;
+  wonDialogDescription?: string;
+  showWonArchiveAction?: boolean;
+  showWonCancelAction?: boolean;
+  getWonLeadTransferActions?: (lead: Lead | null | undefined) => Array<{ flow: TrackingFlowKey; label: string }>;
+  onWonLeadTransfer?: (lead: Lead, flow: TrackingFlowKey) => Promise<void>;
 }
 
 type FormState = {
@@ -62,6 +70,7 @@ type FormState = {
   contact_method: string;
   next_follow_up: string;
   notes: string;
+  company_maturity: string;
   additional_contacts: LeadAdditionalContact[];
   tax_regime: string;
   monthly_revenue_managerial: string;
@@ -144,6 +153,7 @@ const buildInitialForm = (
     contact_method: lead?.contact_method ?? "",
     next_follow_up: lead?.next_follow_up ?? "",
     notes: lead?.notes ?? "",
+    company_maturity: lead?.company_maturity ?? "",
     additional_contacts: parseAdditionalContacts(lead?.additional_contacts),
     tax_regime: lead?.tax_regime ?? "",
     monthly_revenue_managerial: lead?.monthly_revenue_managerial ?? "",
@@ -166,7 +176,17 @@ const createEmptyAdditionalContact = (): LeadAdditionalContact => ({
   email: "",
 });
 
-export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Props) => {
+export const LeadFormDialog = ({
+  open,
+  onOpenChange,
+  lead,
+  defaultStageId,
+  wonDialogDescription = "Este cliente pode ser arquivado agora ou permanecer no funil ate que voce decida arquivar manualmente. O historico continuara salvo e o contato permanecera na aba Contatos.",
+  showWonArchiveAction = true,
+  showWonCancelAction = true,
+  getWonLeadTransferActions,
+  onWonLeadTransfer,
+}: Props) => {
   const qc = useQueryClient();
   const { activeFunnelId, funnels } = useActiveFunnel();
   const { data: profiles = [] } = useProfiles();
@@ -222,8 +242,18 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
   const canManuallyArchiveCurrentLead = Boolean(
     lead &&
     !lead.is_archived &&
-    selectedStage &&
-    (selectedStage.is_lost || selectedStage.is_won),
+    (
+      lead.entity_kind === "customer_tracking" ||
+      (
+        selectedStage &&
+        (selectedStage.is_lost || selectedStage.is_won) &&
+        !(
+          lead.entity_kind === "lead" &&
+          selectedStage.is_won &&
+          isValleSalesFunnel(selectedFunnel?.name)
+        )
+      )
+    ),
   );
   const serviceTypeOptions = useMemo(
     () => getServiceTypeOptionsForFunnel(selectedFunnel?.name),
@@ -343,6 +373,7 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
       next_follow_up: form.next_follow_up || null,
       loss_reason: lostReasonText?.trim() || (lead?.loss_reason ?? null),
       notes: form.notes.trim() || null,
+      company_maturity: form.company_maturity || null,
       additional_contacts: serializeAdditionalContacts(form.additional_contacts),
       tax_regime: form.tax_regime || null,
       monthly_revenue_managerial: form.monthly_revenue_managerial.trim() || null,
@@ -413,6 +444,8 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
     setWonArchiveDialogOpen(false);
     setLossReason("");
     onOpenChange(false);
+
+    return savedLead;
   };
 
   const submit = async (event: React.FormEvent) => {
@@ -435,6 +468,12 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
     }
 
     await saveLead();
+  };
+
+  const handleWonTransfer = async (flow: TrackingFlowKey) => {
+    if (!onWonLeadTransfer) return;
+    const savedLead = await saveLead();
+    await onWonLeadTransfer(savedLead, flow);
   };
 
   const handleManualArchive = async () => {
@@ -524,6 +563,23 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
                     {stages.map((stage) => (
                       <SelectItem key={stage.id} value={stage.id}>
                         {stage.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FieldBlock>
+
+              <FieldBlock>
+                <Label>Perfil empresarial</Label>
+                <Select value={form.company_maturity || "__none__"} onValueChange={(value) => patchForm({ company_maturity: value === "__none__" ? "" : value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Nao informado</SelectItem>
+                    {COMPANY_MATURITY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1122,11 +1178,11 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
           }
         }}
       >
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Marcar como perdido</DialogTitle>
             <DialogDescription>
-              O lead será movido para perdido. Escolha se deseja arquivar agora ou manter no funil por 3 dias.
+              O lead será movido para perdido. Escolha se deseja arquivar agora ou manter no funil para arquivar manualmente depois.
             </DialogDescription>
           </DialogHeader>
 
@@ -1162,7 +1218,7 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
               disabled={loading || !lossReason.trim()}
             >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Manter por 3 dias
+              Manter no funil
             </Button>
             <Button
               type="button"
@@ -1185,26 +1241,34 @@ export const LeadFormDialog = ({ open, onOpenChange, lead, defaultStageId }: Pro
           }
         }}
       >
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Cliente fechado com arquivamento automático</DialogTitle>
-            <DialogDescription>
-              Este cliente permanecerá visível no funil por 3 dias. Após esse período, será arquivado automaticamente. O histórico continuará salvo e o contato permanecerá na aba Contatos.
-            </DialogDescription>
+            <DialogTitle>Cliente fechado</DialogTitle>
+            <DialogDescription>{wonDialogDescription}</DialogDescription>
           </DialogHeader>
 
-          <DialogFooter className="gap-2 sm:gap-2">
-            <Button type="button" variant="ghost" onClick={() => setWonArchiveDialogOpen(false)} disabled={loading}>
-              Cancelar
-            </Button>
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+            {showWonCancelAction && (
+              <Button type="button" variant="ghost" onClick={() => setWonArchiveDialogOpen(false)} disabled={loading}>
+                Cancelar
+              </Button>
+            )}
             <Button type="button" variant="outline" onClick={() => void saveLead()} disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Entendi
+              Manter no funil
             </Button>
-            <Button type="button" variant="accent" onClick={() => void saveLead({ archiveAfterSave: true })} disabled={loading}>
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Arquivar agora
-            </Button>
+            {showWonArchiveAction && (
+              <Button type="button" variant="accent" className="h-auto whitespace-normal text-left" onClick={() => void saveLead({ archiveAfterSave: true })} disabled={loading}>
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Arquivar agora
+              </Button>
+            )}
+            {lead && onWonLeadTransfer && (getWonLeadTransferActions?.(lead) ?? []).map((action) => (
+              <Button key={action.flow} type="button" variant="accent" className="h-auto whitespace-normal text-left" onClick={() => void handleWonTransfer(action.flow)} disabled={loading}>
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {action.label}
+              </Button>
+            ))}
           </DialogFooter>
         </DialogContent>
       </Dialog>
