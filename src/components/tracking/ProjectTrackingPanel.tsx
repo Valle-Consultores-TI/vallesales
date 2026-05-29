@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   Circle,
   Clock3,
-  FileText,
   Sparkles,
 } from "lucide-react";
 
@@ -43,145 +42,116 @@ const StepIcon = ({ status }: { status: ProjectTrackingStep["status"] }) => {
   return <Circle className="h-4 w-4" />;
 };
 
-export const ProjectTrackingPanel = ({ data }: ProjectTrackingPanelProps) => (
-  <div className="space-y-6">
-    <Card className="overflow-hidden border-white/10 bg-white/8 text-white shadow-[0_24px_50px_-26px_rgba(0,0,0,0.38)] backdrop-blur">
-      <CardContent className="p-0">
-        <div className="bg-[linear-gradient(135deg,#2b3c46_0%,#3b505b_100%)] px-5 py-6 sm:px-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/8 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/74">
-                <Sparkles className="h-3.5 w-3.5" />
-                VALLE | Consultores
-              </div>
+export const ProjectTrackingPanel = ({ data }: ProjectTrackingPanelProps) => {
+  const displayName = data.displayName || data.companyName || data.clientName || "Projeto em acompanhamento";
+  const completedSteps = data.steps.filter((step) => step.status === "completed").length;
 
-              <div>
-                <p className="text-sm text-white/72">Acompanhamento em andamento</p>
-                <h2 className="mt-1 text-3xl font-semibold tracking-tight text-white">
-                  {data.displayName || data.companyName || data.clientName || "Projeto em acompanhamento"}
-                </h2>
-              </div>
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2 px-1">
+        <h2 className="text-2xl font-semibold tracking-tight text-white sm:text-[2rem]">
+          Seu acompanhamento
+        </h2>
+        <p className="max-w-2xl text-sm leading-6 text-white/74 sm:text-base">
+          Veja abaixo a etapa atual e os pr\u00F3ximos passos do seu processo.
+        </p>
+      </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="rounded-full border-white/12 bg-white/8 px-3 py-1 text-white">
-                  <Building2 className="mr-1.5 h-3.5 w-3.5" />
-                  {data.flowLabel}
-                </Badge>
-                <Badge variant="outline" className={cn("rounded-full px-3 py-1", statusBadgeClassName[data.status])}>
-                  {data.statusLabel}
-                </Badge>
-              </div>
-            </div>
+      <Card className="overflow-hidden border-white/10 bg-white/8 text-white shadow-[0_24px_50px_-26px_rgba(0,0,0,0.38)] backdrop-blur">
+        <CardContent className="p-0">
+          <div className="bg-[linear-gradient(135deg,#2b3c46_0%,#3b505b_100%)] px-5 py-6 sm:px-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-3">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/8 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/74">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  VALLE | Consultores
+                </div>
 
-            <div className="min-w-[220px] rounded-[1.5rem] border border-white/10 bg-white/8 p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/60">
-                Progresso geral
-              </p>
-              <div className="mt-3 flex items-end justify-between gap-3">
-                <div>
-                  <p className="text-3xl font-semibold text-white">{data.progressPercentage}%</p>
-                  <p className="text-sm text-white/68">
-                    {data.steps.filter((step) => step.status === "completed").length} de {data.steps.length} etapas concluídas
-                  </p>
+                <div className="space-y-2">
+                  <h3 className="text-3xl font-semibold tracking-tight text-white">
+                    {displayName}
+                  </h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline" className="rounded-full border-white/12 bg-white/8 px-3 py-1 text-white">
+                      <Building2 className="mr-1.5 h-3.5 w-3.5" />
+                      {data.flowLabel}
+                    </Badge>
+                    <Badge variant="outline" className={cn("rounded-full px-3 py-1", statusBadgeClassName[data.status])}>
+                      {data.statusLabel}
+                    </Badge>
+                  </div>
                 </div>
               </div>
-              <Progress value={data.progressPercentage} className="mt-4 h-2.5 bg-white/12 [&>div]:bg-[linear-gradient(90deg,#b78362_0%,#d6a486_100%)]" />
+
+              <div className="min-w-[220px] rounded-[1.5rem] border border-white/10 bg-white/8 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/60">
+                  Progresso geral
+                </p>
+                <div className="mt-3 flex items-end justify-between gap-3">
+                  <div>
+                    <p className="text-3xl font-semibold text-white">{data.progressPercentage}%</p>
+                    <p className="text-sm text-white/68">
+                      {completedSteps} de {data.steps.length} etapas conclu\u00EDdas
+                    </p>
+                  </div>
+                </div>
+                <Progress value={data.progressPercentage} className="mt-4 h-2.5 bg-white/12 [&>div]:bg-[linear-gradient(90deg,#b78362_0%,#d6a486_100%)]" />
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="grid gap-5 px-5 py-5 sm:px-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-          <Card className="border-[#e9ddcf] bg-white text-slate-900 shadow-none">
-            <CardContent className="space-y-5 p-5">
-              <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Status atual
-                </p>
-                <h3 className="text-2xl font-semibold text-slate-900">
-                  {data.status === "completed"
-                    ? "Processo concluído"
-                    : data.currentStep?.publicName || "Projeto em acompanhamento"}
+          <div className="space-y-5 px-5 py-5 sm:px-6">
+            <Card className="border-[#e9ddcf] bg-[#f8f5f1] text-slate-900 shadow-none">
+              <CardContent className="p-5 sm:p-6">
+                <h3 className="text-xl font-semibold text-slate-900">
+                  Etapas do projeto
                 </h3>
-              </div>
 
-              <div className="rounded-[1.5rem] border border-[#ede3d8] bg-[#fbf8f4] p-4">
-                <p className="text-sm leading-7 text-slate-700">
-                  {data.status === "completed"
-                    ? data.finalMessage || "Processo concluído! Agora seguimos com a rotina de atendimento da sua empresa."
-                    : data.currentStep?.publicDescription || "Estamos organizando os próximos passos do seu projeto."}
-                </p>
-              </div>
+                <div className="mt-5 space-y-3">
+                  {data.steps.map((step, index) => (
+                    <div key={step.stepKey} className="relative pl-16">
+                      {index < data.steps.length - 1 ? (
+                        <span className="absolute left-[1.42rem] top-10 h-[calc(100%-1rem)] w-px bg-[#ddcfbf]" />
+                      ) : null}
 
-              <div className="rounded-[1.5rem] border border-[#d9ece2] bg-[#f5fbf8] p-4">
-                <p className="text-sm font-semibold text-slate-900">
-                  {data.status === "completed"
-                    ? "Todas as etapas previstas foram concluídas."
-                    : "Estamos trabalhando nesta etapa agora. Assim que houver avanço, esta página será atualizada automaticamente."}
-                </p>
-              </div>
+                      <span
+                        className={cn(
+                          "absolute left-0 top-0 inline-flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-semibold shadow-sm",
+                          statusDotClassName[step.status],
+                        )}
+                      >
+                        {step.status === "pending" ? index + 1 : <StepIcon status={step.status} />}
+                      </span>
 
-              {data.previousPhase ? (
-                <div className="rounded-[1.5rem] border border-[#e3d8ce] bg-white p-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                    <FileText className="h-4 w-4 text-accent" />
-                    {data.previousPhase.title}
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    {data.previousPhase.description}
-                  </p>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          <Card className="border-[#e9ddcf] bg-[#f8f5f1] text-slate-900 shadow-none">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    Linha do tempo
-                  </p>
-                  <h3 className="mt-1 text-xl font-semibold text-slate-900">
-                    Veja em qual etapa estamos e o que ainda falta
-                  </h3>
-                </div>
-              </div>
-
-              <div className="mt-5 space-y-3">
-                {data.steps.map((step, index) => (
-                  <div key={step.stepKey} className="relative pl-16">
-                    {index < data.steps.length - 1 ? (
-                      <span className="absolute left-[1.42rem] top-10 h-[calc(100%-1rem)] w-px bg-[#ddcfbf]" />
-                    ) : null}
-
-                    <span
-                      className={cn(
-                        "absolute left-0 top-0 inline-flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-semibold shadow-sm",
-                        statusDotClassName[step.status],
-                      )}
-                    >
-                      {step.status === "pending" ? index + 1 : <StepIcon status={step.status} />}
-                    </span>
-
-                    <div className={cn("rounded-[1.5rem] border p-4", statusSurfaceClassName[step.status])}>
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="text-base font-semibold text-slate-900">{step.publicName}</p>
-                          <p className="mt-2 text-sm leading-6 text-slate-600">{step.publicDescription}</p>
+                      <div className={cn("rounded-[1.5rem] border p-4 sm:p-5", statusSurfaceClassName[step.status])}>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="max-w-3xl">
+                            <p className="text-base font-semibold text-slate-900">{step.publicName}</p>
+                            <p className="mt-2 text-sm leading-6 text-slate-600">{step.publicDescription}</p>
+                          </div>
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold",
+                              step.status === "current"
+                                ? "max-w-[168px] justify-center whitespace-normal border-[#c08a62] bg-[#c08a62] text-center leading-4 text-white"
+                                : "w-fit border-[#e4d7c7] bg-white text-slate-600",
+                            )}
+                          >
+                            {step.status === "current"
+                              ? "Estamos trabalhando nessa etapa agora."
+                              : STEP_STATUS_COPY[step.status]}
+                            {step.status === "pending" ? <ArrowRight className="h-3.5 w-3.5" /> : null}
+                          </span>
                         </div>
-                        <span className="inline-flex items-center gap-1 rounded-full border border-[#e4d7c7] bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-                          {STEP_STATUS_COPY[step.status]}
-                          {step.status !== "completed" ? <ArrowRight className="h-3.5 w-3.5" /> : null}
-                        </span>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </CardContent>
-    </Card>
-  </div>
-);
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};

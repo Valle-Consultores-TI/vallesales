@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { shouldRequireDocument, shouldShowDocumentField } from "@/lib/project-tracking";
+import { shouldRequireDocument } from "@/lib/project-tracking";
 import type { DocumentValidationMode } from "@/types/project-tracking";
 
 type TrackingLookupFormProps = {
@@ -28,25 +28,27 @@ export const TrackingLookupForm = ({
   onDocumentNumberChange,
   onSubmit,
 }: TrackingLookupFormProps) => (
-  <Card className="border-white/10 bg-white/8 text-white shadow-[0_20px_44px_-26px_rgba(0,0,0,0.35)] backdrop-blur">
+  <Card className="border-white/12 bg-white/[0.08] text-white shadow-[0_28px_60px_-30px_rgba(0,0,0,0.45)] backdrop-blur">
     <CardContent className="p-5 sm:p-6">
-      <form className="space-y-5" onSubmit={onSubmit}>
-        <div className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/62">
-            Consulta pública
+      <form className="space-y-6" onSubmit={onSubmit}>
+        <div className="space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/62">
+            Acesso ao acompanhamento
           </p>
-          <h2 className="text-2xl font-semibold tracking-tight text-white">
-            Acompanhe o andamento do seu projeto
-          </h2>
-          <p className="max-w-2xl text-sm leading-7 text-white/72">
-            Digite o código enviado pela nossa equipe para acompanhar o andamento do seu projeto.
-          </p>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-semibold tracking-tight text-white sm:text-[2rem]">
+              Consulte sua jornada
+            </h2>
+            <p className="max-w-md text-sm leading-6 text-white/74">
+              Informe o c\u00F3digo recebido para visualizar a etapa atual do seu projeto.
+            </p>
+          </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
+        <div className="grid gap-4">
           <div className="space-y-2">
             <Label htmlFor="tracking-code" className="text-white">
-              Código de acompanhamento
+              C\u00F3digo de acompanhamento
             </Label>
             <Input
               id="tracking-code"
@@ -60,17 +62,16 @@ export const TrackingLookupForm = ({
             />
           </div>
 
-          {shouldShowDocumentField(documentValidationMode) ? (
+          {shouldRequireDocument(documentValidationMode) ? (
             <div className="space-y-2">
               <Label htmlFor="document-number" className="text-white">
                 CPF ou CNPJ
-                {shouldRequireDocument(documentValidationMode) ? " *" : " (opcional)"}
               </Label>
               <Input
                 id="document-number"
                 value={documentNumber}
                 onChange={(event) => onDocumentNumberChange(event.target.value)}
-                placeholder="Digite apenas se solicitado"
+                placeholder="Preencha se solicitado"
                 className="h-12 rounded-2xl border-white/12 bg-white/92 text-slate-900 placeholder:text-slate-500"
                 autoComplete="off"
                 inputMode="numeric"
@@ -85,9 +86,9 @@ export const TrackingLookupForm = ({
           </div>
         ) : null}
 
-        <Button type="submit" variant="accent" size="lg" className="w-full rounded-2xl font-semibold" disabled={loading}>
+        <Button type="submit" variant="accent" size="lg" className="h-12 w-full rounded-2xl font-semibold" disabled={loading}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-          Consultar andamento
+          {loading ? "Buscando acompanhamento..." : "Ver andamento"}
         </Button>
       </form>
     </CardContent>
