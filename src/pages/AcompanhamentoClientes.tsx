@@ -13,6 +13,7 @@ import { usePermissions } from "@/hooks/useUserRoles";
 import type { Funnel, Lead, TrackingFlowKey } from "@/types/crm";
 import {
   CUSTOMER_TRACKING_STORAGE_KEY,
+  getTrackingFlowActionLabel,
   TRACKING_FLOW_LABELS,
   sortTrackingFunnels,
 } from "@/lib/customer-tracking";
@@ -112,7 +113,7 @@ const AcompanhamentoClientes = () => {
     if (!canEditLead(lead)) return;
 
     const shouldArchive = window.confirm(
-      "Deseja arquivar este cliente em acompanhamento? Ele saira do fluxo ativo, mas continuara salvo no historico.",
+      "Deseja arquivar este cliente em acompanhamento? Ele sairá do fluxo ativo, mas continuará salvo no histórico.",
     );
     if (!shouldArchive) return;
 
@@ -128,7 +129,7 @@ const AcompanhamentoClientes = () => {
     if (!perms.canDeleteLead) return;
 
     const shouldDelete = window.confirm(
-      "Deseja excluir este cliente em acompanhamento permanentemente? Esta acao nao pode ser desfeita.",
+      "Deseja excluir este cliente em acompanhamento permanentemente? Esta ação não pode ser desfeita.",
     );
     if (!shouldDelete) return;
 
@@ -146,11 +147,11 @@ const AcompanhamentoClientes = () => {
     const actions: Array<{ flow: TrackingFlowKey; label: string }> = [];
 
     if (lead.tracking_flow_key !== "opening_company") {
-      actions.push({ flow: "opening_company", label: "Mover para fluxo de abertura de empresa" });
+      actions.push({ flow: "opening_company", label: getTrackingFlowActionLabel("opening_company", "Mover para") });
     }
 
     if (lead.tracking_flow_key !== "existing_company") {
-      actions.push({ flow: "existing_company", label: "Mover para fluxo de Ja possui CNPJ" });
+      actions.push({ flow: "existing_company", label: getTrackingFlowActionLabel("existing_company", "Mover para") });
     }
 
     return actions;
@@ -171,6 +172,7 @@ const AcompanhamentoClientes = () => {
   const loading = trackingFunnelsQuery.isLoading || stages.isLoading || leads.isLoading || profiles.isLoading;
   const flowKey = activeTrackingFunnel?.tracking_flow_key;
   const flowLabel = flowKey ? TRACKING_FLOW_LABELS[flowKey] : "Acompanhamento";
+  const canManageTrackingStages = perms.canManageTeam;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -191,7 +193,7 @@ const AcompanhamentoClientes = () => {
                   {activeTrackingFunnel ? flowLabel : "Fluxos de acompanhamento"}
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  Movimente clientes conforme a execucao do processo apos o fechamento comercial.
+                  Movimente clientes conforme a execução do processo após o fechamento comercial.
                 </p>
               </div>
             </div>
@@ -235,7 +237,7 @@ const AcompanhamentoClientes = () => {
             <AlertTriangle className="h-10 w-10 text-warning" />
             <h3 className="text-lg font-semibold">Sem acesso ao acompanhamento</h3>
             <p className="text-sm text-muted-foreground">
-              Este menu fica disponivel apenas para usuarios com acesso ao funil Valle Consultores.
+              Este menu fica disponível apenas para usuários com acesso ao funil Valle Consultores.
             </p>
           </div>
         ) : !activeTrackingFunnelId ? (
@@ -243,15 +245,15 @@ const AcompanhamentoClientes = () => {
             <AlertTriangle className="h-10 w-10 text-warning" />
             <h3 className="text-lg font-semibold">Nenhum fluxo selecionado</h3>
             <p className="text-sm text-muted-foreground">
-              Escolha um dos fluxos para acompanhar os clientes em execucao.
+              Escolha um dos fluxos para acompanhar os clientes em execução.
             </p>
           </div>
         ) : stages.isError || leads.isError ? (
           <div className="mx-auto flex min-h-[320px] max-w-md flex-col items-center justify-center gap-3 text-center">
             <AlertTriangle className="h-10 w-10 text-destructive" />
-            <h3 className="text-lg font-semibold">Nao foi possivel carregar o acompanhamento</h3>
+            <h3 className="text-lg font-semibold">Não foi possível carregar o acompanhamento</h3>
             <p className="text-sm text-muted-foreground">
-              {(stages.error as Error)?.message || (leads.error as Error)?.message || "Erro de conexao com o backend."}
+              {(stages.error as Error)?.message || (leads.error as Error)?.message || "Erro de conexão com o backend."}
             </p>
           </div>
         ) : (
@@ -259,13 +261,13 @@ const AcompanhamentoClientes = () => {
             <Card className="border-border/70 px-4 py-3">
               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-foreground">{activeTrackingFunnel?.name}</p>
+                  <p className="text-sm font-semibold text-foreground">{flowLabel}</p>
                   <p className="text-xs text-muted-foreground">
                     {leads.data?.length ?? 0} cliente(s) neste fluxo.
                   </p>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  O acesso deste modulo herda as permissoes do funil Valle Consultores.
+                  O acesso deste módulo herda as permissões do funil Valle Consultores.
                 </p>
               </div>
             </Card>
@@ -281,14 +283,14 @@ const AcompanhamentoClientes = () => {
               addEntityLabel="cliente"
               canAddLead={perms.canCreateLead}
               canMoveLead={canEditLead}
-              canRenameStages={false}
-              canCreateStages={false}
-              canDeleteStages={false}
-              wonDialogTitle={flowKey === "opening_company" ? "Abertura concluida" : "Fluxo concluido"}
+              canRenameStages={canManageTrackingStages}
+              canCreateStages={canManageTrackingStages}
+              canDeleteStages={canManageTrackingStages}
+              wonDialogTitle={flowKey === "opening_company" ? "Registro e legalização concluído" : "Fluxo concluído"}
               wonDialogDescription={
                 flowKey === "opening_company"
-                  ? "Ao concluir a abertura de empresa, o cliente sera enviado automaticamente para o fluxo de implantacao do atendimento contabil."
-                  : "Conclua este fluxo quando o onboarding contabil ja tiver sido finalizado."
+                  ? "Ao concluir registro e legalização, o cliente será enviado automaticamente para Onboarding."
+                  : "Conclua este fluxo quando o onboarding contábil já tiver sido finalizado."
               }
               wonDialogKeepLabel={flowKey === "opening_company" ? "Ir para Onboarding" : "Concluir fluxo"}
               showWonArchiveAction
@@ -307,11 +309,11 @@ const AcompanhamentoClientes = () => {
         defaultStageId={defaultStage}
         funnelOptions={accessibleFunnels}
         lockedFunnelId={activeTrackingFunnelId}
-        wonDialogTitle={flowKey === "opening_company" ? "Abertura concluida" : "Fluxo concluido"}
+        wonDialogTitle={flowKey === "opening_company" ? "Registro e legalização concluído" : "Fluxo concluído"}
         wonDialogDescription={
           flowKey === "opening_company"
-            ? "Ao concluir a abertura de empresa, o cliente sera enviado automaticamente para o fluxo de implantacao do atendimento contabil."
-            : "Conclua este fluxo quando o onboarding contabil ja tiver sido finalizado."
+            ? "Ao concluir registro e legalização, o cliente será enviado automaticamente para Onboarding."
+            : "Conclua este fluxo quando o onboarding contábil já tiver sido finalizado."
         }
         wonDialogKeepLabel={flowKey === "opening_company" ? "Ir para Onboarding" : "Concluir fluxo"}
         showWonArchiveAction

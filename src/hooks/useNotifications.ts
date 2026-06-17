@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { useActiveFunnel } from "@/hooks/useActiveFunnel";
 import { useAuth } from "@/hooks/useAuth";
 import { useMyProfile } from "@/hooks/useUserRoles";
@@ -16,16 +17,21 @@ import {
 import type { Lead, LeadActivity } from "@/types/crm";
 
 type NotificationLeadSummary = Pick<Lead, "id" | "company_or_person" | "contact_name" | "funnel_id" | "is_archived">;
+type UserNotificationRow = Pick<
+  Database["public"]["Tables"]["user_notifications"]["Row"],
+  "id" | "kind" | "title" | "message" | "href" | "metadata" | "created_at" | "read_at"
+>;
 type NotificationFeed = {
   activities: Pick<LeadActivity, "id" | "lead_id" | "type" | "description" | "created_at" | "created_by">[];
   leads: NotificationLeadSummary[];
+  userNotifications: UserNotificationRow[];
 };
 
 export type CrmNotification = {
   id: string;
   leadId: string;
   funnelId: string;
-  type: LeadActivityType;
+  type: LeadActivityType | string;
   title: string;
   description: string;
   category: NotificationPreferenceKey;
@@ -96,17 +102,32 @@ export const useNotifications = () => {
     enabled: !!user?.id,
     refetchInterval: 60000,
     queryFn: async (): Promise<NotificationFeed> => {
-      const { data: activities, error } = await supabase
-        .from("lead_activities")
-        .select("id, lead_id, type, description, created_at, created_by")
-        .order("created_at", { ascending: false })
-        .limit(MAX_NOTIFICATIONS);
+      const [
+        { data: activities, error },
+        { data: userNotifications, error: userNotificationsError },
+      ] = await Promise.all([
+        supabase
+          .from("lead_activities")
+          .select("id, lead_id, type, description, created_at, created_by")
+          .order("created_at", { ascending: false })
+          .limit(MAX_NOTIFICATIONS),
+        supabase
+          .from("user_notifications")
+          .select("id, kind, title, message, href, metadata, created_at, read_at")
+          .order("created_at", { ascending: false })
+          .limit(MAX_NOTIFICATIONS),
+      ]);
       if (error) throw error;
+      if (userNotificationsError) throw userNotificationsError;
 
       const leadIds = Array.from(new Set((activities ?? []).map((activity) => activity.lead_id)));
 
       if (leadIds.length === 0) {
-        return { activities: [], leads: [] };
+        return {
+          activities: [],
+          leads: [],
+          userNotifications: (userNotifications ?? []) as UserNotificationRow[],
+        };
       }
 
       const { data: leads, error: leadsError } = await supabase
@@ -118,6 +139,7 @@ export const useNotifications = () => {
       return {
         activities: (activities ?? []) as NotificationFeed["activities"],
         leads: (leads ?? []) as NotificationLeadSummary[],
+        userNotifications: (userNotifications ?? []) as UserNotificationRow[],
       };
     },
   });
@@ -125,14 +147,26 @@ export const useNotifications = () => {
   const markAllAsRead = useMutation({
     mutationFn: async () => {
       if (!user?.id) return;
-      const { error } = await supabase
-        .from("profiles")
-        .update({ notifications_last_read_at: new Date().toISOString() })
-        .eq("id", user.id);
+      const readAt = new Date().toISOString();
+      const [{ error }, { error: userNotificationsError }] = await Promise.all([
+        supabase
+          .from("profiles")
+          .update({ notifications_last_read_at: readAt })
+          .eq("id", user.id),
+        supabase
+          .from("user_notifications")
+          .update({ read_at: readAt })
+          .eq("recipient_user_id", user.id)
+          .is("read_at", null),
+      ]);
       if (error) throw error;
+      if (userNotificationsError) throw userNotificationsError;
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["my_profile", user?.id] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["my_profile", user?.id] }),
+        queryClient.invalidateQueries({ queryKey: ["crm_notifications_feed", user?.id] }),
+      ]);
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -147,7 +181,7 @@ export const useNotifications = () => {
     const funnelsById = new Map(funnels.map((funnel) => [funnel.id, funnel.name]));
     const leadsById = new Map((feedQuery.data?.leads ?? []).map((lead) => [lead.id, lead]));
 
-    return (feedQuery.data?.activities ?? [])
+    const activityNotifications = (feedQuery.data?.activities ?? [])
       .flatMap((activity) => {
         const category = ACTIVITY_NOTIFICATION_PREFERENCES[activity.type];
         if (!category || !preferences[category]) return [];
@@ -183,7 +217,53 @@ export const useNotifications = () => {
         } satisfies CrmNotification];
       })
       .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
-  }, [feedQuery.data?.activities, feedQuery.data?.leads, funnels, profileQuery.data?.notification_preferences, profileQuery.data?.notifications_last_read_at, user?.id]);
+
+    const targetedNotifications = (feedQuery.data?.userNotifications ?? []).map((notification) => {
+      const metadata =
+        notification.metadata && typeof notification.metadata === "object" && !Array.isArray(notification.metadata)
+          ? (notification.metadata as Record<string, unknown>)
+          : null;
+      const clientName = typeof metadata?.client_name === "string" && metadata.client_name.trim()
+        ? metadata.client_name
+        : typeof metadata?.client_email === "string" && metadata.client_email.trim()
+          ? metadata.client_email
+          : "Cliente do portal";
+      const leadId = typeof metadata?.client_user_id === "string" && metadata.client_user_id.trim()
+        ? metadata.client_user_id
+        : notification.id;
+      const funnelId = typeof metadata?.source_funnel_id === "string" && metadata.source_funnel_id.trim()
+        ? metadata.source_funnel_id
+        : "__portal__";
+
+      return {
+        id: notification.id,
+        leadId,
+        funnelId,
+        type: notification.kind,
+        title: notification.title,
+        description: notification.message,
+        category: "team_updates" as const,
+        categoryLabel: "Portal do cliente",
+        createdAt: notification.created_at,
+        leadName: clientName,
+        funnelName: "Portal do cliente",
+        unread: !notification.read_at,
+        ownActivity: false,
+        href: notification.href?.trim() || "/acompanhamento",
+      } satisfies CrmNotification;
+    });
+
+    return [...targetedNotifications, ...activityNotifications]
+      .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+  }, [
+    feedQuery.data?.activities,
+    feedQuery.data?.leads,
+    feedQuery.data?.userNotifications,
+    funnels,
+    profileQuery.data?.notification_preferences,
+    profileQuery.data?.notifications_last_read_at,
+    user?.id,
+  ]);
 
   const unreadCount = notifications.filter((notification) => notification.unread).length;
 

@@ -83,7 +83,7 @@ export const KanbanBoard = ({
   funnelId,
   funnelName = null,
   wonDialogTitle = "Cliente fechado",
-  wonDialogDescription = "Este cliente pode ser arquivado agora ou permanecer no funil ate que voce decida arquivar manualmente. O historico continuara salvo e o contato permanecera na aba Contatos.",
+  wonDialogDescription = "Este cliente pode ser arquivado agora ou permanecer no funil até que você decida arquivar manualmente. O histórico continuará salvo e o contato permanecerá na aba Contatos.",
   wonDialogKeepLabel = "Manter no funil",
   wonDialogArchiveLabel = "Arquivar agora",
   showWonArchiveAction = true,
@@ -291,7 +291,7 @@ export const KanbanBoard = ({
       await onWonLeadTransfer(updatedLead, flow);
       setWonLeadPending(null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "NÃ£o foi possÃ­vel concluir a transferÃªncia do cliente.");
+      toast.error(error instanceof Error ? error.message : "Não foi possível concluir a transferência do cliente.");
     } finally {
       setSavingLostReason(false);
     }
@@ -524,7 +524,7 @@ export const KanbanBoard = ({
                               className="h-7 w-7 shrink-0 text-muted-foreground hover:bg-muted hover:text-foreground"
                               onClick={cancelStageRename}
                               disabled={renameStage.isPending}
-                              aria-label={`Cancelar edicao da fase ${stage.name}`}
+                              aria-label={`Cancelar edição da fase ${stage.name}`}
                               title="Cancelar"
                             >
                               <X className="h-3.5 w-3.5" />
@@ -611,7 +611,7 @@ export const KanbanBoard = ({
                       </p>
                       {conversion !== null && (
                         <span
-                          title={`Conversao a partir de "${prevStage?.name}" (${stageLeads.length}/${prevCount})`}
+                          title={`Conversão a partir de "${prevStage?.name}" (${stageLeads.length}/${prevCount})`}
                           className={cn(
                             "rounded-md border px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
                             conversion >= 70

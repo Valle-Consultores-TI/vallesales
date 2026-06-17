@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -206,7 +206,7 @@ export const LeadFormDialog = ({
   funnelOptions,
   lockedFunnelId,
   wonDialogTitle = "Cliente fechado",
-  wonDialogDescription = "Este cliente pode ser arquivado agora ou permanecer no funil ate que voce decida arquivar manualmente. O historico continuara salvo e o contato permanecera na aba Contatos.",
+  wonDialogDescription = "Este cliente pode ser arquivado agora ou permanecer no funil até que você decida arquivar manualmente. O histórico continuará salvo e o contato permanecerá na aba Contatos.",
   wonDialogKeepLabel = "Manter no funil",
   showWonArchiveAction = true,
   showWonCancelAction = true,
@@ -372,9 +372,9 @@ export const LeadFormDialog = ({
       nextErrors.contact_name = "Informe o nome do contato principal.";
     }
     if (!isValidLeadPhone(form.phone)) {
-      nextErrors.phone = "Informe um telefone valido para o contato principal.";
+      nextErrors.phone = "Informe um telefone válido para o contato principal.";
     }
-    if ((form.source === "Indicacao" || form.source === "Valle Indicacao") && !form.indication_by.trim()) {
+    if ((form.source === "Indicação" || form.source === "Valle Indicação") && !form.indication_by.trim()) {
       nextErrors.indication_by = "Informe quem fez a indicação.";
     }
 
@@ -634,7 +634,7 @@ export const LeadFormDialog = ({
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none__">Nao informado</SelectItem>
+                    <SelectItem value="__none__">Não informado</SelectItem>
                     {COMPANY_MATURITY_OPTIONS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
@@ -707,7 +707,7 @@ export const LeadFormDialog = ({
                     patchForm({
                       source: value,
                       indication_by:
-                        value === "Indicacao" || value === "Valle Indicacao"
+                        value === "Indicação" || value === "Valle Indicação"
                           ? form.indication_by
                           : "",
                     });
@@ -727,7 +727,7 @@ export const LeadFormDialog = ({
                 </Select>
               </FieldBlock>
 
-              {(form.source === "Indicacao" || form.source === "Valle Indicacao") && (
+              {(form.source === "Indicação" || form.source === "Valle Indicação") && (
                 <FieldBlock error={errors.indication_by}>
                   <Label>Indicação por</Label>
                   <Input
@@ -931,14 +931,14 @@ export const LeadFormDialog = ({
           {isValleContractFunnel && (
             <FormSection
               title="Dados para contrato"
-              description="Esses campos alimentam o resumo copiavel usado pelo assistente de contratos da Valle Consultores."
+              description="Esses campos alimentam o resumo copiável usado pelo assistente de contratos da Valle Consultores."
             >
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <FieldBlock className="md:col-span-2">
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="space-y-3 rounded-lg border border-border/70 p-4">
                       <div className="space-y-1">
-                        <Label>1 - Gestao Fiscal</Label>
+                        <Label>1 - Gestão Fiscal</Label>
                         <p className="text-xs text-muted-foreground">Escolha apenas um item.</p>
                       </div>
                       <Select
@@ -949,7 +949,7 @@ export const LeadFormDialog = ({
                           <SelectValue placeholder="Selecione o perfil fiscal" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__">Nao informado</SelectItem>
+                          <SelectItem value="__none__">Não informado</SelectItem>
                           {VALLE_CONTRACT_FISCAL_OPTIONS.map((option) => (
                             <SelectItem key={option.code} value={option.code}>
                               {option.code} - {option.label}
@@ -961,7 +961,7 @@ export const LeadFormDialog = ({
 
                     <div className="space-y-3 rounded-lg border border-border/70 p-4">
                       <div className="space-y-1">
-                        <Label>2 - Gestao Contabil</Label>
+                        <Label>2 - Gestão Contábil</Label>
                         <p className="text-xs text-muted-foreground">Escolha um item.</p>
                       </div>
                       <Select
@@ -972,7 +972,7 @@ export const LeadFormDialog = ({
                           <SelectValue placeholder="Selecione o perfil contabil" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__">Nao informado</SelectItem>
+                          <SelectItem value="__none__">Não informado</SelectItem>
                           {VALLE_CONTRACT_ACCOUNTING_OPTIONS.map((option) => (
                             <SelectItem key={option.code} value={option.code}>
                               {option.code} - {option.label}
@@ -984,7 +984,7 @@ export const LeadFormDialog = ({
 
                     <div className="space-y-3 rounded-lg border border-border/70 p-4">
                       <div className="space-y-1">
-                        <Label>3 - Gestao Trabalhista</Label>
+                        <Label>3 - Gestão Trabalhista</Label>
                         <p className="text-xs text-muted-foreground">Escolha um item.</p>
                       </div>
                       <Select
@@ -995,7 +995,7 @@ export const LeadFormDialog = ({
                           <SelectValue placeholder="Selecione o perfil trabalhista" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__">Nao informado</SelectItem>
+                          <SelectItem value="__none__">Não informado</SelectItem>
                           {VALLE_CONTRACT_LABOR_OPTIONS.map((option) => (
                             <SelectItem key={option.code} value={option.code}>
                               {option.code} - {option.label}
@@ -1007,7 +1007,7 @@ export const LeadFormDialog = ({
 
                     <div className="space-y-3 rounded-lg border border-border/70 p-4">
                       <div className="space-y-1">
-                        <Label>5 - Endereco Fiscal/Comercial</Label>
+                        <Label>5 - Endereço Fiscal/Comercial</Label>
                         <p className="text-xs text-muted-foreground">Opcional.</p>
                       </div>
                       <label className="flex items-center gap-3 rounded-md border border-border/60 px-3 py-3">
@@ -1022,7 +1022,7 @@ export const LeadFormDialog = ({
                 </FieldBlock>
 
                 <FieldBlock className="md:col-span-2">
-                  <Label>4 - Gestao Financeira</Label>
+                  <Label>4 - Gestão Financeira</Label>
                   <div className="grid grid-cols-1 gap-3 rounded-lg border border-border/70 p-4 md:grid-cols-2">
                     {VALLE_CONTRACT_FINANCIAL_OPTIONS.map((option) => {
                       const checked = form.contract_financial_codes.includes(option.code);
@@ -1041,7 +1041,7 @@ export const LeadFormDialog = ({
                     })}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    O resumo copiavel exibira automaticamente os codigos selecionados no card do cliente.
+                    O resumo copiável exibira automaticamente os códigos selecionados no card do cliente.
                   </p>
                 </FieldBlock>
               </div>
@@ -1054,7 +1054,7 @@ export const LeadFormDialog = ({
           >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <FieldBlock>
-                <Label>Proximo follow-up</Label>
+                <Label>Próximo follow-up</Label>
                 <Input
                   type="date"
                   value={form.next_follow_up}
@@ -1122,16 +1122,16 @@ export const LeadFormDialog = ({
               </FieldBlock>
 
               <FieldBlock>
-                <Label>Inscricao Estadual</Label>
+                <Label>Inscrição Estadual</Label>
                 <Input
-                  placeholder="Se vazio, o resumo usara ISENTO"
+                  placeholder="Se vazio, o resumo usará ISENTO"
                   value={form.contract_state_registration}
                   onChange={(event) => patchForm({ contract_state_registration: event.target.value })}
                 />
               </FieldBlock>
 
               <FieldBlock>
-                <Label>Regime tributario atual</Label>
+                <Label>Regime tributário atual</Label>
                 <Select value={form.tax_regime || undefined} onValueChange={(value) => patchForm({ tax_regime: value })}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione" />
@@ -1147,7 +1147,7 @@ export const LeadFormDialog = ({
               </FieldBlock>
 
               <FieldBlock>
-                <Label>Faturamento medio mensal gerencial</Label>
+                <Label>Faturamento médio mensal gerencial</Label>
                 <Input
                   inputMode="decimal"
                   placeholder="Ex.: 150000"
@@ -1157,7 +1157,7 @@ export const LeadFormDialog = ({
               </FieldBlock>
 
               <FieldBlock>
-                <Label>Faturamento medio mensal fiscal</Label>
+                <Label>Faturamento médio mensal fiscal</Label>
                 <Input
                   inputMode="decimal"
                   placeholder="Ex.: 140000"
@@ -1167,7 +1167,7 @@ export const LeadFormDialog = ({
               </FieldBlock>
 
               <FieldBlock>
-                <Label>Quantidade media de NF por mes</Label>
+                <Label>Quantidade média de NF por mês</Label>
                 <Input
                   inputMode="numeric"
                   placeholder="Ex.: 85"
@@ -1177,7 +1177,7 @@ export const LeadFormDialog = ({
               </FieldBlock>
 
               <FieldBlock>
-                <Label>Funcionarios CLT</Label>
+                <Label>Funcionários CLT</Label>
                 <Input
                   inputMode="numeric"
                   placeholder="Ex.: 10"
@@ -1197,7 +1197,7 @@ export const LeadFormDialog = ({
               </FieldBlock>
 
               <FieldBlock>
-                <Label>Valor bruto medio da folha</Label>
+                <Label>Valor bruto médio da folha</Label>
                 <Input
                   inputMode="decimal"
                   placeholder="Ex.: 58000"
@@ -1207,7 +1207,7 @@ export const LeadFormDialog = ({
               </FieldBlock>
 
               <FieldBlock>
-                <Label>Quantidade de contas bancarias</Label>
+                <Label>Quantidade de contas bancárias</Label>
                 <Input
                   inputMode="numeric"
                   placeholder="Ex.: 3"
@@ -1235,7 +1235,7 @@ export const LeadFormDialog = ({
               <FieldBlock>
                 <Label>Sistema financeiro utilizado</Label>
                 <Input
-                  placeholder="Ex.: Omie, Conta Azul, ERP proprio"
+                  placeholder="Ex.: Omie, Conta Azul, ERP próprio"
                   value={form.financial_system}
                   onChange={(event) => patchForm({ financial_system: event.target.value })}
                 />
@@ -1500,3 +1500,5 @@ const FieldBlock = ({
     {error && <p className="text-xs font-medium text-destructive">{error}</p>}
   </div>
 );
+
+

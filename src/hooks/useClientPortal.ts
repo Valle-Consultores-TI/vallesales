@@ -96,6 +96,11 @@ const invokeProtectedFunction = async <T>(
   return data as T;
 };
 
+export const recordClientPortalLogin = () =>
+  invokeProtectedFunction<{ ok: boolean; notifiedAdminCount: number; skipped: boolean }>("client-portal-api", {
+    action: "record_login",
+  });
+
 export const useClientPortalOverview = (enabled = true) =>
   useQuery({
     queryKey: ["client_portal_overview"],
@@ -220,6 +225,55 @@ export const useSetClientPortalLink = () => {
       queryClient.invalidateQueries({ queryKey: ["client_portal_link", variables.leadId] });
       queryClient.invalidateQueries({ queryKey: ["client_portal_overview"] });
       toast.success("Vinculo do portal do cliente atualizado.");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+};
+
+export const useUpdateClientPortalProfile = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ fullName }: { fullName: string }) => {
+      const trimmedName = fullName.trim();
+
+      if (!trimmedName) {
+        throw new Error("Informe o nome da conta.");
+      }
+
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData.user?.id;
+
+      if (!userId) {
+        throw new Error("Sessao de usuario nao encontrada.");
+      }
+
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({ full_name: trimmedName })
+        .eq("id", userId);
+
+      if (profileError) throw profileError;
+
+      const { error: authError } = await supabase.auth.updateUser({
+        data: { full_name: trimmedName },
+      });
+
+      if (authError) throw authError;
+
+      return { fullName: trimmedName };
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["client_portal_overview"] }),
+        queryClient.invalidateQueries({ queryKey: ["client_portal_project"] }),
+        queryClient.invalidateQueries({ queryKey: ["client_portal_referrals"] }),
+        queryClient.invalidateQueries({ queryKey: ["my_profile"] }),
+        queryClient.invalidateQueries({ queryKey: ["profiles"] }),
+      ]);
+      toast.success("Nome da conta atualizado.");
     },
     onError: (error: Error) => {
       toast.error(error.message);

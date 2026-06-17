@@ -60,7 +60,7 @@ const App = () => (
               <ActiveFunnelProvider>
                 <Routes>
                   <Route path="/auth" element={<Auth />} />
-                  <Route path="/cliente" element={<Auth />} />
+                  <Route path="/cliente/auth" element={<Auth />} />
                   <Route path="/captacao" element={<PublicLeadForm />} />
                   <Route path="/fale-conosco" element={<PublicLeadForm />} />
                   <Route path="/programa-indicacao" element={<ReferralProgram />} />

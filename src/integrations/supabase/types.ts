@@ -516,6 +516,53 @@ export type Database = {
           },
         ]
       }
+      user_notifications: {
+        Row: {
+          created_at: string
+          href: string | null
+          id: string
+          kind: string
+          message: string
+          metadata: Json
+          read_at: string | null
+          recipient_user_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          href?: string | null
+          id?: string
+          kind: string
+          message: string
+          metadata?: Json
+          read_at?: string | null
+          recipient_user_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          href?: string | null
+          id?: string
+          kind?: string
+          message?: string
+          metadata?: Json
+          read_at?: string | null
+          recipient_user_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_notifications_recipient_user_id_fkey"
+            columns: ["recipient_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string

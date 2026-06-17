@@ -4,9 +4,12 @@ export const CUSTOMER_TRACKING_STORAGE_KEY = "vallesales-active-customer-trackin
 export const VALLE_FUNNEL_NAME = "Valle Consultores";
 
 export const TRACKING_FLOW_LABELS: Record<TrackingFlowKey, string> = {
-  opening_company: "Abertura de empresa",
-  existing_company: "Ja possui CNPJ",
+  opening_company: "Registro e Legalização",
+  existing_company: "Onboarding",
 };
+
+export const getTrackingFlowActionLabel = (flow: TrackingFlowKey, action: "Enviar para" | "Mover para") =>
+  `${action} ${TRACKING_FLOW_LABELS[flow]}`;
 
 export const normalizeTrackingText = (value: string | null | undefined) =>
   (value ?? "")
@@ -38,9 +41,7 @@ export const inferTrackingFlowFromLead = (lead: Pick<Lead, "company_maturity" | 
 export const getTrackingTransferLabel = (lead: Pick<Lead, "company_maturity" | "service_types" | "cnpj">) => {
   const flow = inferTrackingFlowFromLead(lead);
   if (!flow) return null;
-  return flow === "opening_company"
-    ? "Enviar para fluxo de abertura de empresa"
-    : "Enviar para fluxo de Ja possui CNPJ";
+  return getTrackingFlowActionLabel(flow, "Enviar para");
 };
 
 export const getTrackingTransferActions = (lead: Pick<Lead, "company_maturity" | "service_types" | "cnpj">) => {
@@ -48,15 +49,13 @@ export const getTrackingTransferActions = (lead: Pick<Lead, "company_maturity" |
   if (inferredFlow) {
     return [{
       flow: inferredFlow,
-      label: inferredFlow === "opening_company"
-        ? "Enviar para fluxo de abertura de empresa"
-        : "Enviar para fluxo de Ja possui CNPJ",
+      label: getTrackingFlowActionLabel(inferredFlow, "Enviar para"),
     }];
   }
 
   return [
-    { flow: "opening_company" as TrackingFlowKey, label: "Enviar para fluxo de abertura de empresa" },
-    { flow: "existing_company" as TrackingFlowKey, label: "Enviar para fluxo de Ja possui CNPJ" },
+    { flow: "opening_company" as TrackingFlowKey, label: getTrackingFlowActionLabel("opening_company", "Enviar para") },
+    { flow: "existing_company" as TrackingFlowKey, label: getTrackingFlowActionLabel("existing_company", "Enviar para") },
   ];
 };
 

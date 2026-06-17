@@ -4,6 +4,8 @@ import { z } from "zod";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { recordClientPortalLogin } from "@/hooks/useClientPortal";
+import { usePermissions } from "@/hooks/useUserRoles";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -29,10 +31,10 @@ export default function Auth() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, loading: authLoading } = useAuth();
+  const perms = usePermissions();
   const [loading, setLoading] = useState(false);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const isClientPortal = location.pathname.startsWith("/cliente");
-  const homeRoute = isClientPortal && user ? `/cliente/${user.id}` : isClientPortal ? "/cliente/auth" : "/";
 
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -42,11 +44,44 @@ export default function Auth() {
   const [signupPassword, setSignupPassword] = useState("");
   const [signupPasswordConfirm, setSignupPasswordConfirm] = useState("");
 
+  const notifyClientPortalLogin = () => {
+    if (!isClientPortal) return;
+
+    void recordClientPortalLogin().catch((error) => {
+      console.error("Nao foi possivel registrar o login do portal do cliente.", error);
+    });
+  };
+
   useEffect(() => {
-    if (!authLoading && user) {
-      navigate(isClientPortal ? `/cliente/${user.id}` : "/", { replace: true });
+    if (authLoading || !user || perms.isLoading) return;
+
+    if (isClientPortal) {
+      if (perms.canAccessClientPortal) {
+        navigate(`/cliente/${user.id}`, { replace: true });
+        return;
+      }
+
+      if (perms.canAccessApp) {
+        navigate("/", { replace: true });
+      }
+      return;
     }
-  }, [user, authLoading, isClientPortal, navigate]);
+
+    if (perms.canAccessClientPortal && !perms.canAccessApp) {
+      navigate(`/cliente/${user.id}`, { replace: true });
+      return;
+    }
+
+    navigate("/", { replace: true });
+  }, [
+    authLoading,
+    isClientPortal,
+    navigate,
+    perms.canAccessApp,
+    perms.canAccessClientPortal,
+    perms.isLoading,
+    user,
+  ]);
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -73,7 +108,12 @@ export default function Auth() {
     }
 
     toast.success("Bem-vindo!");
-    navigate(homeRoute, { replace: true });
+    if (!isClientPortal) {
+      navigate("/", { replace: true });
+      return;
+    }
+
+    notifyClientPortalLogin();
   };
 
   const handleSignup = async (event: React.FormEvent) => {
@@ -113,12 +153,15 @@ export default function Auth() {
     }
 
     if (data.session) {
+      notifyClientPortalLogin();
       toast.success(
         isClientPortal
           ? "Conta de cliente criada com sucesso."
           : "Conta criada! Seu acesso sera liberado apos aprovacao.",
       );
-      navigate(isClientPortal ? `/cliente/${data.user?.id ?? ""}` : "/", { replace: true });
+      if (!isClientPortal) {
+        navigate("/", { replace: true });
+      }
       return;
     }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -104,12 +104,12 @@ const activityLabel: Record<string, string> = {
 };
 
 const attachmentPeriodLabels: Record<AttachmentPeriodFilter, string> = {
-  all: "Todo o periodo",
+  all: "Todo o período",
   today: "Hoje",
-  last_7_days: "Ultimos 7 dias",
-  last_30_days: "Ultimos 30 dias",
-  this_month: "Este mes",
-  last_month: "Mes passado",
+  last_7_days: "Últimos 7 dias",
+  last_30_days: "Últimos 30 dias",
+  this_month: "Este mês",
+  last_month: "Mês passado",
 };
 
 const getAttachmentDateRange = (filter: AttachmentPeriodFilter, now = new Date()) => {
@@ -321,7 +321,7 @@ export const LeadDetailsSheet = ({
       await onTrackingTransfer(lead, flow);
       onOpenChange(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Nao foi possivel enviar o cliente para acompanhamento.");
+      toast.error(error instanceof Error ? error.message : "Não foi possível enviar o cliente para acompanhamento.");
     } finally {
       setTransferringFlow(null);
     }
@@ -332,9 +332,9 @@ export const LeadDetailsSheet = ({
 
     try {
       await navigator.clipboard.writeText(trackingCode);
-      toast.success("Codigo de acompanhamento copiado.");
+      toast.success("Código de acompanhamento copiado.");
     } catch {
-      toast.error("Nao foi possivel copiar o codigo agora.");
+      toast.error("Não foi possível copiar o código agora.");
     }
   };
 
@@ -345,7 +345,7 @@ export const LeadDetailsSheet = ({
       await navigator.clipboard.writeText(valleContractSummary);
       toast.success("Dados do contrato copiados.");
     } catch {
-      toast.error("Nao foi possivel copiar os dados do contrato agora.");
+      toast.error("Não foi possível copiar os dados do contrato agora.");
     }
   };
 
@@ -537,7 +537,7 @@ export const LeadDetailsSheet = ({
             {trackingCode && (
               <div className="col-span-2 rounded-xl border border-accent/20 bg-accent/5 p-3">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <Info label="Codigo de acompanhamento" value={trackingCode} />
+                  <Info label="Código de acompanhamento" value={trackingCode} />
                   <Button
                     type="button"
                     size="sm"
@@ -599,7 +599,7 @@ export const LeadDetailsSheet = ({
                       <p className="mt-1 text-xs text-muted-foreground">
                         {clientPortalLink.data?.client_user?.access_status === "active"
                           ? "Portal pronto para login"
-                          : "Aguardando vinculacao"}
+                          : "Aguardando vinculação"}
                       </p>
                     </div>
                   </div>
@@ -647,8 +647,8 @@ export const LeadDetailsSheet = ({
               />
             )}
             {lead.cnpj && <Info label="CNPJ" value={lead.cnpj} />}
-            {lead.contract_state_registration && <Info label="Inscricao Estadual" value={lead.contract_state_registration} />}
-            {lead.employee_count && <Info label="Funcionarios" value={lead.employee_count} />}
+            {lead.contract_state_registration && <Info label="Inscrição Estadual" value={lead.contract_state_registration} />}
+            {lead.employee_count && <Info label="Funcionários" value={lead.employee_count} />}
             {sourceState.source && <Info label="Origem" value={formatLeadSourceLabel(sourceState.source)} />}
             {sourceState.indication_by && <Info label="Indicação por" value={sourceState.indication_by} />}
             {lead.company_maturity && (
@@ -661,14 +661,14 @@ export const LeadDetailsSheet = ({
             {lead.segment === "Outro" && lead.segment_other && (
               <Info label="Segmento detalhado" value={lead.segment_other} />
             )}
-            {lead.tax_regime && <Info label="Regime tributario" value={lead.tax_regime} />}
+            {lead.tax_regime && <Info label="Regime tributário" value={lead.tax_regime} />}
           </div>
 
           {isValleContractFunnel && (
             <Card className="space-y-3 border-accent/25 bg-accent/5 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h4 className="text-sm font-semibold text-foreground">Dados variaveis para contrato</h4>
+                  <h4 className="text-sm font-semibold text-foreground">Dados variáveis para contrato</h4>
                   <p className="text-xs text-muted-foreground">
                     Bloco pronto para copiar e colar no assistente de contratos da Valle Consultores.
                   </p>
@@ -752,8 +752,8 @@ export const LeadDetailsSheet = ({
                 </h4>
                 <p className="text-xs text-muted-foreground">
                   {canTransferTrackingLead
-                    ? "Se precisar, voce pode mover este cliente entre os fluxos de abertura de empresa e ja possui CNPJ."
-                    : "Este cliente foi mantido no funil comercial. Quando quiser, voce pode envia-lo para o fluxo operacional adequado."}
+                    ? `Se precisar, você pode mover este cliente entre os fluxos de ${TRACKING_FLOW_LABELS.opening_company} e ${TRACKING_FLOW_LABELS.existing_company}.`
+                    : "Este cliente foi mantido no funil comercial. Quando quiser, você pode enviá-lo para o fluxo operacional adequado."}
                 </p>
               </div>
               <div className="flex flex-col gap-2 md:flex-row">
@@ -796,11 +796,11 @@ export const LeadDetailsSheet = ({
             <Card className="space-y-3 border-border/70 p-4">
               <div>
                 <h4 className="text-sm font-semibold text-foreground">
-                  {isOpeningCompanyLead ? "Atividades da futura empresa" : "Servico necessario"}
+                  {isOpeningCompanyLead ? "Atividades da futura empresa" : "Serviço necessário"}
                 </h4>
                 <p className="text-xs text-muted-foreground">
                   {isOpeningCompanyLead
-                    ? "Descricao enviada por quem busca abertura de empresa."
+                    ? "Descrição enviada por quem busca abertura de empresa."
                     : "Necessidade comercial registrada no cadastro."}
                 </p>
               </div>
@@ -834,7 +834,7 @@ export const LeadDetailsSheet = ({
             <Card className="space-y-3 border-border/70 p-4">
               <div>
                 <h4 className="text-sm font-semibold text-foreground">
-                  {isCwkLead ? "Diagnostico CWK" : "Diagnostico financeiro e operacional"}
+                  {isCwkLead ? "Diagnóstico CWK" : "Diagnóstico financeiro e operacional"}
                 </h4>
                 <p className="text-xs text-muted-foreground">
                   Informações complementares coletadas no formulário comercial.
@@ -850,7 +850,7 @@ export const LeadDetailsSheet = ({
                 {lead.monthly_invoice_count && (
                   <Info label="NF por mes" value={lead.monthly_invoice_count} />
                 )}
-                {lead.employee_count_clt && <Info label="Funcionarios CLT" value={lead.employee_count_clt} />}
+                {lead.employee_count_clt && <Info label="Funcionários CLT" value={lead.employee_count_clt} />}
                 {lead.employee_count_pj && <Info label="Profissionais PJ" value={lead.employee_count_pj} />}
                 {lead.payroll_gross_value && <Info label="Folha bruta media" value={lead.payroll_gross_value} />}
                 {lead.bank_account_count && <Info label="Contas bancarias" value={lead.bank_account_count} />}
@@ -912,7 +912,7 @@ export const LeadDetailsSheet = ({
                   </Select>
                   <Textarea
                     rows={1}
-                    placeholder="Descricao (opcional)"
+                    placeholder="Descrição (opcional)"
                     value={contactDesc}
                     onChange={(event) => setContactDesc(event.target.value)}
                     className="min-h-9 flex-1"
@@ -993,7 +993,7 @@ export const LeadDetailsSheet = ({
             <TabsContent value="files" className="mt-4 space-y-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-col gap-1 sm:min-w-[220px]">
-                  <p className="text-xs font-medium text-muted-foreground">Filtrar por periodo</p>
+                  <p className="text-xs font-medium text-muted-foreground">Filtrar por período</p>
                   <Select
                     value={attachmentPeriodFilter}
                     onValueChange={(value) => setAttachmentPeriodFilter(value as AttachmentPeriodFilter)}
@@ -1038,7 +1038,7 @@ export const LeadDetailsSheet = ({
                 ) : attachments.data?.length === 0 ? (
                   <p className="text-xs text-muted-foreground">Sem anexos.</p>
                 ) : filteredAttachments.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">Nenhum arquivo encontrado para o periodo selecionado.</p>
+                  <p className="text-xs text-muted-foreground">Nenhum arquivo encontrado para o período selecionado.</p>
                 ) : (
                   filteredAttachments.map((attachment) => (
                     <Card key={attachment.id} className="flex items-center justify-between gap-2 p-3">

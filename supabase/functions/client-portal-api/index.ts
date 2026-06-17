@@ -342,6 +342,21 @@ const buildLeadNotes = ({
 
 const buildReferralSource = (referrerName: string) => `Valle Indicacao: ${referrerName}`;
 
+const getValleFunnelId = async () => {
+  const [funnel] = await sql`
+    select id
+    from public.funnels
+    where lower(trim(name)) = lower('Valle Consultores')
+    limit 1
+  `;
+
+  if (!funnel) {
+    throw new Error("Funil Valle Consultores nao encontrado.");
+  }
+
+  return funnel.id as string;
+};
+
 const getSessionContext = async (req: Request): Promise<SessionContext> => {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) throw new Response("Sessao nao encontrada.", { status: 401 });
@@ -550,21 +565,12 @@ const buildTrackingPayload = async (projectId: string) => {
 };
 
 const getValleFunnelAndStage = async () => {
-  const [funnel] = await sql`
-    select id
-    from public.funnels
-    where lower(trim(name)) = lower('Valle Consultores')
-    limit 1
-  `;
-
-  if (!funnel) {
-    throw new Error("Funil Valle Consultores nao encontrado.");
-  }
+  const funnelId = await getValleFunnelId();
 
   const [preferredStage] = await sql`
     select id
     from public.pipeline_stages
-    where funnel_id = ${funnel.id as string}
+    where funnel_id = ${funnelId}
       and key = 'novo_lead'
       and is_won = false
       and is_lost = false
@@ -573,7 +579,7 @@ const getValleFunnelAndStage = async () => {
 
   if (preferredStage) {
     return {
-      funnelId: funnel.id as string,
+      funnelId,
       stageId: preferredStage.id as string,
     };
   }
@@ -581,7 +587,7 @@ const getValleFunnelAndStage = async () => {
   const [stage] = await sql`
     select id
     from public.pipeline_stages
-    where funnel_id = ${funnel.id as string}
+    where funnel_id = ${funnelId}
       and is_won = false
       and is_lost = false
     order by position asc, created_at asc
@@ -593,7 +599,7 @@ const getValleFunnelAndStage = async () => {
   }
 
   return {
-    funnelId: funnel.id as string,
+    funnelId,
     stageId: stage.id as string,
   };
 };
@@ -605,6 +611,89 @@ const resolveActiveProject = (
   if (projects.length === 0) return null;
   if (!requestedProjectId) return projects[0];
   return projects.find((project) => project.id === requestedProjectId) ?? null;
+};
+
+const notifyValleAdminsAboutClientLogin = async (ctx: SessionContext) => {
+  const linkedProjects = await getLinkedProjects(ctx.userId);
+  if (linkedProjects.length > 0) {
+    return { notifiedAdminCount: 0, skipped: true as const };
+  }
+
+  const valleFunnelId = await getValleFunnelId();
+  const recipients = await sql`
+    select p.id::text as id
+    from public.profiles p
+    where p.access_status = 'active'
+      and p.is_active = true
+      and exists (
+        select 1
+        from public.user_roles ur
+        where ur.user_id = p.id
+          and ur.role = 'admin'
+      )
+      and (
+        p.has_all_funnel_access = true
+        or exists (
+          select 1
+          from public.user_funnel_access ufa
+          where ufa.user_id = p.id
+            and ufa.funnel_id = ${valleFunnelId}
+        )
+      )
+  `;
+
+  if (recipients.length === 0) {
+    return { notifiedAdminCount: 0, skipped: false as const };
+  }
+
+  const recipientIds = recipients.map((recipient) => recipient.id as string);
+  const existingRows = await sql`
+    select recipient_user_id::text as recipient_user_id
+    from public.user_notifications
+    where recipient_user_id = any(${recipientIds})
+      and kind = 'client_portal_login'
+      and read_at is null
+      and metadata->>'client_user_id' = ${ctx.userId}
+  `;
+
+  const existingRecipientIds = new Set(existingRows.map((row) => row.recipient_user_id as string));
+  const title = "Cliente acessou o portal";
+  const message = ctx.email
+    ? `${ctx.fullName} (${ctx.email}) entrou no portal do cliente e ainda nao foi vinculado a um cliente do acompanhamento.`
+    : `${ctx.fullName} entrou no portal do cliente e ainda nao foi vinculado a um cliente do acompanhamento.`;
+
+  let notifiedAdminCount = 0;
+
+  for (const recipientId of recipientIds) {
+    if (existingRecipientIds.has(recipientId)) continue;
+
+    await sql`
+      insert into public.user_notifications (
+        recipient_user_id,
+        kind,
+        title,
+        message,
+        href,
+        metadata
+      ) values (
+        ${recipientId},
+        ${"client_portal_login"},
+        ${title},
+        ${message},
+        ${"/acompanhamento"},
+        ${{
+          client_user_id: ctx.userId,
+          client_name: ctx.fullName,
+          client_email: ctx.email,
+          source_funnel_id: valleFunnelId,
+        }}
+      )
+    `;
+
+    notifiedAdminCount += 1;
+  }
+
+  return { notifiedAdminCount, skipped: false as const };
 };
 
 const handleOverview = async (ctx: SessionContext) => {
@@ -625,6 +714,11 @@ const handleOverview = async (ctx: SessionContext) => {
     projects,
     referralsCount: Number(referralCountRow?.count ?? 0),
   });
+};
+
+const handleRecordLogin = async (ctx: SessionContext) => {
+  const result = await notifyValleAdminsAboutClientLogin(ctx);
+  return json({ ok: true, ...result });
 };
 
 const handleProject = async (ctx: SessionContext, body: ClientPortalPayload) => {
@@ -910,6 +1004,10 @@ serve(async (req) => {
 
     if (action === "overview") {
       return await handleOverview(ctx);
+    }
+
+    if (action === "record_login") {
+      return await handleRecordLogin(ctx);
     }
 
     if (action === "project") {

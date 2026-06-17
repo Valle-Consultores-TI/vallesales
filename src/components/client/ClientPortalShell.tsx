@@ -1,9 +1,12 @@
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { LogOut } from "lucide-react";
+import { Loader2, LogOut, Pencil, Save, X } from "lucide-react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useUpdateClientPortalProfile } from "@/hooks/useClientPortal";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { ClientPortalIdentity } from "@/types/client-portal";
 import valleLogo from "@/assets/valle-logo-full.png";
@@ -33,11 +36,32 @@ export const ClientPortalShell = ({
 }: ClientPortalShellProps) => {
   const navigate = useNavigate();
   const { signOut } = useAuth();
+  const updateProfile = useUpdateClientPortalProfile();
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState(client?.fullName ?? "");
+
+  useEffect(() => {
+    if (!editingName) {
+      setDraftName(client?.fullName ?? "");
+    }
+  }, [client?.fullName, editingName]);
 
   const handleSignOut = async () => {
     await signOut();
     navigate("/cliente/auth", { replace: true });
   };
+
+  const cancelNameEdit = () => {
+    setDraftName(client?.fullName ?? "");
+    setEditingName(false);
+  };
+
+  const handleSaveName = async () => {
+    await updateProfile.mutateAsync({ fullName: draftName });
+    setEditingName(false);
+  };
+
+  const hasNameChanged = draftName.trim() !== (client?.fullName ?? "").trim();
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#2b3c46_0%,#314650_52%,#263740_100%)] text-white">
@@ -95,9 +119,72 @@ export const ClientPortalShell = ({
             </div>
 
             <Card className="border-white/10 bg-white/8 p-5 text-white shadow-none backdrop-blur">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/65">Conta conectada</p>
-              <p className="mt-3 text-lg font-semibold text-white">{client?.fullName ?? "Cliente Valle"}</p>
-              <p className="mt-1 text-sm text-white/68">{client?.email ?? "Sem e-mail principal"}</p>
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/65">Conta conectada</p>
+                {!editingName ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-white/72 hover:bg-white/10 hover:text-white"
+                    onClick={() => setEditingName(true)}
+                  >
+                    <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                    Editar nome
+                  </Button>
+                ) : null}
+              </div>
+
+              {editingName ? (
+                <div className="mt-3 space-y-3">
+                  <Input
+                    value={draftName}
+                    onChange={(event) => setDraftName(event.target.value)}
+                    maxLength={120}
+                    autoFocus
+                    placeholder="Como voce quer aparecer no portal"
+                    className="border-white/15 bg-white/10 text-white placeholder:text-white/45"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void handleSaveName();
+                      }
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        cancelNameEdit();
+                      }
+                    }}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="accent"
+                      size="sm"
+                      onClick={() => void handleSaveName()}
+                      disabled={updateProfile.isPending || !draftName.trim() || !hasNameChanged}
+                    >
+                      {updateProfile.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                      Salvar
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="border-white/15 bg-white/10 text-white hover:bg-white/15 hover:text-white"
+                      onClick={cancelNameEdit}
+                      disabled={updateProfile.isPending}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="mt-3 text-lg font-semibold text-white">{client?.fullName ?? "Cliente Valle"}</p>
+                  <p className="mt-1 text-sm text-white/68">{client?.email ?? "Sem e-mail principal"}</p>
+                </>
+              )}
             </Card>
           </div>
 

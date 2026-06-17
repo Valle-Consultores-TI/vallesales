@@ -73,7 +73,7 @@ import { buildLeadSearchText } from "@/lib/lead-search";
 import { needsActionToday } from "@/lib/priority";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { isValleSalesFunnel } from "@/lib/customer-tracking";
+import { getTrackingFlowActionLabel, isValleSalesFunnel } from "@/lib/customer-tracking";
 
 type StatusFilter = "todos" | "atrasados" | "sem_contato" | "follow_hoje" | "acao_hoje";
 
@@ -216,8 +216,8 @@ const Index = () => {
   const getWonLeadTransferActions = useCallback((lead: Lead) => {
     if (!isValleSalesFunnel(activeFunnel?.name)) return [];
     return [
-      { flow: "opening_company" as const, label: "Enviar para fluxo de abertura de empresa" },
-      { flow: "existing_company" as const, label: "Enviar para fluxo de Ja possui CNPJ" },
+      { flow: "opening_company" as const, label: getTrackingFlowActionLabel("opening_company", "Enviar para") },
+      { flow: "existing_company" as const, label: getTrackingFlowActionLabel("existing_company", "Enviar para") },
     ];
   }, [activeFunnel?.name]);
 
