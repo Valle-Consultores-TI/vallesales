@@ -4,6 +4,7 @@ import { z } from "zod";
 import { CheckCircle2, Copy, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 
+import { ClientPortalAccessClaimCard } from "@/components/client/ClientPortalAccessClaimCard";
 import { ClientPortalShell } from "@/components/client/ClientPortalShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -92,12 +93,12 @@ const ClientPortalReferrals = () => {
   if (referralsQuery.error || !referralsQuery.data) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-6 text-center text-sm text-muted-foreground">
-        {referralsQuery.error instanceof Error ? referralsQuery.error.message : "Nao foi possivel carregar as indicacoes."}
+        {referralsQuery.error instanceof Error ? referralsQuery.error.message : "Não foi possível carregar as indicações."}
       </div>
     );
   }
 
-  const { client, projects, referrals, activeProjectId } = referralsQuery.data;
+  const { client, projects, referrals, activeProjectId, claimRequired, claimDocumentValidationMode } = referralsQuery.data;
 
   const patchForm = (patch: Partial<FormState>) => {
     setForm((current) => ({ ...current, ...patch }));
@@ -131,7 +132,7 @@ const ClientPortalReferrals = () => {
       await navigator.clipboard.writeText(value);
       toast.success(message);
     } catch {
-      toast.error("Nao foi possivel copiar agora.");
+      toast.error("Não foi possível copiar agora.");
     }
   };
 
@@ -156,7 +157,7 @@ const ClientPortalReferrals = () => {
 
       setSubmittedToken(result.tracking_token);
       setForm(initialForm);
-      toast.success(result.duplicate ? "Essa indicacao ja havia sido registrada recentemente." : "Indicacao enviada para a Valle.");
+      toast.success(result.duplicate ? "Essa indicação já havia sido registrada recentemente." : "Indicação enviada para a Valle.");
     } catch {
       // Errors are already handled by the mutation.
     }
@@ -168,15 +169,19 @@ const ClientPortalReferrals = () => {
       client={client}
       activeTab="indicacoes"
       title="Indique novos contatos sem preencher seus dados novamente"
-      description="Como voce ja esta identificado no portal, basta informar os dados do indicado. O historico das suas indicacoes fica salvo abaixo."
+      description="Como você já está identificado no portal, basta informar os dados do indicado. O histórico das suas indicações fica salvo abaixo."
     >
+      {claimRequired ? (
+        <ClientPortalAccessClaimCard claimDocumentValidationMode={claimDocumentValidationMode} />
+      ) : null}
+
       <div className="grid gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
         <Card className="border-white/10 bg-white/8 text-white shadow-none backdrop-blur">
           <CardContent className="space-y-5 p-5">
             <div className="space-y-2">
-              <p className="text-lg font-semibold text-white">Nova indicacao</p>
+              <p className="text-lg font-semibold text-white">Nova indicação</p>
               <p className="text-sm leading-7 text-white/68">
-                Preencha somente os dados do indicado. O cliente logado sera associado automaticamente a esta indicacao.
+                Preencha somente os dados do indicado. O cliente logado será associado automaticamente a esta indicação.
               </p>
             </div>
 
@@ -309,13 +314,13 @@ const ClientPortalReferrals = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="referral-notes" className="text-white">Por que esta indicacao faz sentido?</Label>
+                <Label htmlFor="referral-notes" className="text-white">Por que esta indicação faz sentido?</Label>
                 <Textarea
                   id="referral-notes"
                   rows={4}
                   value={form.notes}
                   onChange={(event) => patchForm({ notes: event.target.value })}
-                  placeholder="Conte rapidamente qual necessidade voce enxerga e por que acredita que a Valle pode ajudar."
+                  placeholder="Conte rapidamente qual necessidade você enxerga e por que acredita que a Valle pode ajudar."
                 />
               </div>
 
@@ -344,7 +349,7 @@ const ClientPortalReferrals = () => {
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-white">Indicacao registrada</p>
                     <p className="mt-1 text-sm leading-6 text-white/72">
-                      O codigo de acompanhamento foi gerado para essa oportunidade.
+                      O código de acompanhamento foi gerado para essa oportunidade.
                     </p>
                   </div>
                 </div>
@@ -356,10 +361,10 @@ const ClientPortalReferrals = () => {
                     type="button"
                     variant="outline"
                     className="border-white/15 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-                    onClick={() => void handleCopy(submittedToken, "Codigo copiado.")}
+                    onClick={() => void handleCopy(submittedToken, "Código copiado.")}
                   >
                     <Copy className="mr-2 h-4 w-4" />
-                    Copiar codigo
+                    Copiar código
                   </Button>
                 </div>
               </div>
@@ -370,7 +375,7 @@ const ClientPortalReferrals = () => {
         <Card className="border-white/10 bg-white/8 text-white shadow-none backdrop-blur">
           <CardContent className="space-y-5 p-5">
             <div className="space-y-2">
-              <p className="text-lg font-semibold text-white">Suas indicacoes</p>
+              <p className="text-lg font-semibold text-white">Suas indicações</p>
               <p className="text-sm leading-7 text-white/68">
                 As oportunidades criadas com o seu login aparecem aqui com o status comercial mais recente.
               </p>
@@ -378,7 +383,7 @@ const ClientPortalReferrals = () => {
 
             {referrals.length === 0 ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/72">
-                Nenhuma indicacao foi registrada com esta conta ainda.
+                Nenhuma indicação foi registrada com esta conta ainda.
               </div>
             ) : (
               <div className="space-y-4">
@@ -388,7 +393,7 @@ const ClientPortalReferrals = () => {
                       <div className="min-w-0">
                         <p className="text-base font-semibold text-white">{referral.referredCompanyOrPerson}</p>
                         <p className="mt-1 text-sm text-white/68">
-                          {referral.referredContactName ?? "Contato principal nao informado"}
+                          {referral.referredContactName ?? "Contato principal não informado"}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -400,10 +405,10 @@ const ClientPortalReferrals = () => {
                           size="sm"
                           variant="outline"
                           className="border-white/15 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-                          onClick={() => void handleCopy(referral.trackingToken, "Codigo copiado.")}
+                          onClick={() => void handleCopy(referral.trackingToken, "Código copiado.")}
                         >
                           <Copy className="mr-2 h-3.5 w-3.5" />
-                          Copiar codigo
+                          Copiar código
                         </Button>
                       </div>
                     </div>

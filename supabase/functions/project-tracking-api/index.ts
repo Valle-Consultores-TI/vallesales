@@ -35,6 +35,9 @@ type UpdatePayload = {
   crmDealId?: unknown;
   clientName?: unknown;
   companyName?: unknown;
+  clientEmail?: unknown;
+  client_email?: unknown;
+  email?: unknown;
   documentNumber?: unknown;
   pipelineName?: unknown;
   stageName?: unknown;
@@ -68,6 +71,7 @@ const createOrUpdateProject = async (body: UpdatePayload) => {
   const crmDealId = normalizeOptionalString(body.crmDealId);
   const clientName = normalizeOptionalString(body.clientName);
   const companyName = normalizeOptionalString(body.companyName);
+  const clientEmail = normalizeOptionalString(body.clientEmail ?? body.client_email ?? body.email);
   const documentNumber = sanitizeDocumentNumber(body.documentNumber);
   const pipelineName = normalizeOptionalString(body.pipelineName);
   const stageName = normalizeOptionalString(body.stageName);
@@ -75,7 +79,7 @@ const createOrUpdateProject = async (body: UpdatePayload) => {
 
   if (!crmDealId) return fail("Informe o crmDealId.");
 
-  let flowType = isProjectTrackingFlowType(body.flowType)
+  const flowType = isProjectTrackingFlowType(body.flowType)
     ? body.flowType
     : flowFromExistingCompanyFlag(body.hasExistingCompany);
 
@@ -153,6 +157,8 @@ const createOrUpdateProject = async (body: UpdatePayload) => {
       crm_deal_id,
       client_name,
       company_name,
+      client_email,
+      client_email_normalized,
       tracking_code,
       tracking_code_normalized,
       document_number,
@@ -167,6 +173,8 @@ const createOrUpdateProject = async (body: UpdatePayload) => {
       ${crmDealId},
       ${clientName},
       ${companyName},
+      ${clientEmail},
+      nullif(lower(trim(${clientEmail})), ''),
       ${trackingCode},
       public.normalize_tracking_code(${trackingCode}),
       ${documentNumber || null},
@@ -182,6 +190,11 @@ const createOrUpdateProject = async (body: UpdatePayload) => {
     set
       client_name = coalesce(excluded.client_name, public.project_tracking_projects.client_name),
       company_name = coalesce(excluded.company_name, public.project_tracking_projects.company_name),
+      client_email = coalesce(excluded.client_email, public.project_tracking_projects.client_email),
+      client_email_normalized = coalesce(
+        excluded.client_email_normalized,
+        public.project_tracking_projects.client_email_normalized
+      ),
       document_number = coalesce(excluded.document_number, public.project_tracking_projects.document_number),
       document_number_normalized = coalesce(excluded.document_number_normalized, public.project_tracking_projects.document_number_normalized),
       crm_pipeline = excluded.crm_pipeline,

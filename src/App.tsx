@@ -17,6 +17,7 @@ import AcompanhamentoClientes from "./pages/AcompanhamentoClientes.tsx";
 import Configuracoes from "./pages/Configuracoes.tsx";
 import AguardandoAprovacao from "./pages/AguardandoAprovacao.tsx";
 import Auth from "./pages/Auth.tsx";
+import ClientPortalActivate from "./pages/ClientPortalActivate.tsx";
 import ClientPortalHome from "./pages/ClientPortalHome.tsx";
 import ClientPortalTracking from "./pages/ClientPortalTracking.tsx";
 import ClientPortalReferrals from "./pages/ClientPortalReferrals.tsx";
@@ -61,6 +62,7 @@ const App = () => (
                 <Routes>
                   <Route path="/auth" element={<Auth />} />
                   <Route path="/cliente/auth" element={<Auth />} />
+                  <Route path="/cliente/ativar" element={<ClientPortalActivate />} />
                   <Route path="/captacao" element={<PublicLeadForm />} />
                   <Route path="/fale-conosco" element={<PublicLeadForm />} />
                   <Route path="/programa-indicacao" element={<ReferralProgram />} />

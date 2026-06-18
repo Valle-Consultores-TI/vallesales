@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 
+import { ClientPortalAccessClaimCard } from "@/components/client/ClientPortalAccessClaimCard";
 import { ClientPortalShell } from "@/components/client/ClientPortalShell";
 import { ProjectTrackingPanel } from "@/components/tracking/ProjectTrackingPanel";
 import { Card, CardContent } from "@/components/ui/card";
@@ -32,20 +33,20 @@ const ClientPortalTracking = () => {
   if (projectQuery.error || !projectQuery.data) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-6 text-center text-sm text-muted-foreground">
-        {projectQuery.error instanceof Error ? projectQuery.error.message : "Nao foi possivel carregar o acompanhamento."}
+        {projectQuery.error instanceof Error ? projectQuery.error.message : "Não foi possível carregar o acompanhamento."}
       </div>
     );
   }
 
-  const { client, projects, tracking } = projectQuery.data;
+  const { client, projects, tracking, claimRequired, claimDocumentValidationMode } = projectQuery.data;
 
   return (
     <ClientPortalShell
       clientId={clientId}
       client={client}
       activeTab="acompanhar"
-      title="Acompanhe seus processos sem codigo publico"
-      description="Seu login ja identifica os projetos vinculados ao seu cadastro. Basta escolher um deles para visualizar a etapa atual e os proximos passos."
+      title="Acompanhe seus processos sem código público"
+      description="Seu login já identifica os projetos vinculados ao seu cadastro. Basta escolher um deles para visualizar a etapa atual e os próximos passos."
     >
       <Card className="border-white/10 bg-white/8 text-white shadow-none backdrop-blur">
         <CardContent className="space-y-4 p-5">
@@ -91,7 +92,7 @@ const ClientPortalTracking = () => {
               <p className="text-sm font-semibold text-white">{activeProject.displayName ?? "Projeto Valle"}</p>
               <p className="mt-1 text-sm text-white/68">{activeProject.flowLabel}</p>
               <p className="mt-3 text-xs uppercase tracking-[0.18em] text-white/55">
-                Ultima atualizacao em {new Date(activeProject.updatedAt).toLocaleString("pt-BR")}
+                Última atualização em {new Date(activeProject.updatedAt).toLocaleString("pt-BR")}
               </p>
             </div>
           ) : (
@@ -102,12 +103,18 @@ const ClientPortalTracking = () => {
         </CardContent>
       </Card>
 
+      {claimRequired ? (
+        <ClientPortalAccessClaimCard claimDocumentValidationMode={claimDocumentValidationMode} />
+      ) : null}
+
       {tracking ? (
         <ProjectTrackingPanel data={tracking} />
       ) : (
         <Card className="border-white/10 bg-white/8 text-white shadow-none backdrop-blur">
           <CardContent className="p-5 text-sm text-white/72">
-            Assim que a equipe da Valle vincular um projeto ao seu cadastro, o acompanhamento aparecera aqui.
+            {claimRequired
+              ? "Confirme o CPF/CNPJ do cadastro para liberar seus projetos e acompanhar as etapas por aqui."
+              : "Assim que a equipe da Valle vincular um projeto ao seu cadastro, o acompanhamento aparecera aqui."}
           </CardContent>
         </Card>
       )}

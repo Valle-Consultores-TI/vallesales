@@ -26,6 +26,8 @@ export type ClientPortalOverviewResponse = {
   client: ClientPortalIdentity;
   projects: ClientPortalProjectSummary[];
   referralsCount: number;
+  claimRequired: boolean;
+  claimDocumentValidationMode?: "disabled" | "optional" | "required";
 };
 
 export type ClientPortalProjectResponse = {
@@ -34,6 +36,8 @@ export type ClientPortalProjectResponse = {
   projects: ClientPortalProjectSummary[];
   activeProjectId: string | null;
   tracking: ProjectTrackingLookupResponse | null;
+  claimRequired: boolean;
+  claimDocumentValidationMode?: "disabled" | "optional" | "required";
 };
 
 export type ClientPortalReferralStage = {
@@ -76,6 +80,8 @@ export type ClientPortalReferralListResponse = {
   projects: ClientPortalProjectSummary[];
   activeProjectId: string | null;
   referrals: ClientPortalReferralItem[];
+  claimRequired: boolean;
+  claimDocumentValidationMode?: "disabled" | "optional" | "required";
 };
 
 export type ClientPortalReferralSubmitResponse = {
@@ -98,4 +104,86 @@ export type ClientPortalUser = {
 export type ClientPortalLinkResponse = {
   project_id: string | null;
   client_user: ClientPortalUser | null;
+};
+
+export type ClientPortalClaimAccessResponse = {
+  ok: true;
+  claimedCount: number;
+  claimRequired: boolean;
+  projects: ClientPortalProjectSummary[];
+};
+
+export type ClientPortalInvitationStatus = "pending" | "accepted" | "expired" | "revoked";
+
+export type ClientPortalInvitationProject = {
+  id: string;
+  currentTrackingLeadId?: string | null;
+  clientPortalUserId?: string | null;
+  clientName?: string | null;
+  companyName?: string | null;
+  displayName: string;
+  flowType?: "company_opening" | "existing_company";
+  flowLabel: string;
+  statusLabel: string;
+  trackingCode: string;
+  updatedAt: string;
+  linkedClientUser?: ClientPortalUser | null;
+};
+
+export type ClientPortalInvitationSummary = {
+  id: string;
+  status: ClientPortalInvitationStatus;
+  email: string;
+  fullName: string | null;
+  documentNumber: string | null;
+  expiresAt: string;
+  acceptedAt: string | null;
+  lastSentAt: string | null;
+  projectIds: string[];
+  projects: ClientPortalInvitationProject[];
+  acceptedByUser: ClientPortalUser | null;
+};
+
+export type ClientPortalInvitationSetupResponse = {
+  lead: {
+    id: string;
+    full_name: string | null;
+    email: string | null;
+    document_number: string | null;
+  };
+  projects: ClientPortalInvitationProject[];
+  invitation: ClientPortalInvitationSummary | null;
+};
+
+export type ClientPortalInvitationUpsertResponse = {
+  ok: true;
+  invitation: ClientPortalInvitationSummary | null;
+  activation_path: string;
+  message: string;
+};
+
+export type ClientPortalInvitationContextResponse = {
+  ok: true;
+  invitation: {
+    id: string;
+    status: ClientPortalInvitationStatus;
+    email: string;
+    fullName: string | null;
+    documentNumber: string | null;
+    expiresAt: string;
+    acceptedAt: string | null;
+    projectCount: number;
+    projects: ClientPortalInvitationProject[];
+  };
+};
+
+export type ClientPortalInvitationAcceptResponse = {
+  ok: true;
+  redirectPath: string;
+  projectsLinked: number;
+  client: {
+    id: string;
+    email: string | null;
+    fullName: string;
+  };
 };

@@ -33,6 +33,7 @@ type ArchivedSelection = "active" | "archived" | "all";
 type LeadEntityKind = "lead" | "customer_tracking";
 type LeadEntitySelection = LeadEntityKind | "all";
 type TrackingFlowKey = "opening_company" | "existing_company";
+type ClientPortalInvitationStatus = "pending" | "accepted" | "expired" | "revoked";
 
 type LeadPayload = Record<string, unknown>;
 type AdditionalContactPayload = {
@@ -56,6 +57,20 @@ type LeadRow = Record<string, unknown> & {
   tracking_flow_key?: TrackingFlowKey | null;
   source_lead_id?: string | null;
   tracking_code?: string | null;
+};
+
+type PortalInviteProjectCandidate = {
+  id: string;
+  current_tracking_lead_id: string | null;
+  client_portal_user_id: string | null;
+  client_name: string | null;
+  company_name: string | null;
+  flow_type: TrackingFlowKey;
+  status: "active" | "completed" | "paused";
+  updated_at: string;
+  tracking_code: string;
+  linked_full_name: string | null;
+  linked_email: string | null;
 };
 
 const allowedLeadFields = new Set([
@@ -128,6 +143,11 @@ const normalizeOptionalString = (value: unknown) => {
   return trimmed ? trimmed : null;
 };
 
+const normalizeEmail = (value: unknown) => {
+  const normalized = normalizeOptionalString(value);
+  return normalized ? normalized.toLowerCase() : null;
+};
+
 const formatDateOnly = (value: Date | string | null | undefined) => {
   if (!value) return null;
 
@@ -159,6 +179,41 @@ const normalizePhone = (value: unknown) => {
   if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
 };
+
+const normalizeDocumentNumber = (value: unknown) => {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) return null;
+  const digits = normalized.replace(/\D/g, "");
+  return digits || null;
+};
+
+const parsePositiveInteger = (value: unknown, fallback: number) => {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number.parseInt(value.trim(), 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  return fallback;
+};
+
+const toHex = (buffer: ArrayBuffer) =>
+  Array.from(new Uint8Array(buffer))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+
+const sha256Hex = async (value: string) =>
+  toHex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
+
+const generatePortalInviteToken = () =>
+  `${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`;
+
+const buildPortalInvitePath = (token: string) => `/cliente/ativar?token=${encodeURIComponent(token)}`;
 
 const countPhoneDigits = (value: string | null | undefined) => (value ?? "").replace(/\D/g, "").length;
 
@@ -632,6 +687,161 @@ const getTrackingFunnel = async ({
   return funnel ?? null;
 };
 
+const getClientPortalCandidateProjects = async (leadId: string): Promise<PortalInviteProjectCandidate[]> => {
+  const [anchorProject] = await sql`
+    select
+      id::text as id,
+      document_number_normalized,
+      client_email_normalized,
+      client_portal_user_id::text as client_portal_user_id
+    from public.project_tracking_projects
+    where current_tracking_lead_id = ${leadId}
+    limit 1
+  `;
+
+  if (!anchorProject?.id) {
+    throw new Response("Nenhum projeto de acompanhamento foi encontrado para este cliente.", { status: 404 });
+  }
+
+  const documentNumber = (anchorProject.document_number_normalized as string | null) ?? null;
+  const email = (anchorProject.client_email_normalized as string | null) ?? null;
+  const linkedUserId = (anchorProject.client_portal_user_id as string | null) ?? null;
+
+  const rows = await sql`
+    select distinct
+      project.id::text as id,
+      project.current_tracking_lead_id::text as current_tracking_lead_id,
+      project.client_portal_user_id::text as client_portal_user_id,
+      project.client_name,
+      project.company_name,
+      project.flow_type,
+      project.status,
+      project.updated_at,
+      project.tracking_code,
+      profile.full_name as linked_full_name,
+      profile.email as linked_email
+    from public.project_tracking_projects project
+    left join public.profiles profile
+      on profile.id = project.client_portal_user_id
+    where project.id = ${anchorProject.id as string}
+       or (${documentNumber} is not null and project.document_number_normalized = ${documentNumber})
+       or (${email} is not null and project.client_email_normalized = ${email})
+       or (${linkedUserId} is not null and project.client_portal_user_id = ${linkedUserId})
+    order by project.updated_at desc, project.created_at desc
+  `;
+
+  return rows.map((row) => ({
+    id: row.id as string,
+    current_tracking_lead_id: (row.current_tracking_lead_id as string | null) ?? null,
+    client_portal_user_id: (row.client_portal_user_id as string | null) ?? null,
+    client_name: (row.client_name as string | null) ?? null,
+    company_name: (row.company_name as string | null) ?? null,
+    flow_type: row.flow_type as TrackingFlowKey,
+    status: row.status as "active" | "completed" | "paused",
+    updated_at: row.updated_at as string,
+    tracking_code: row.tracking_code as string,
+    linked_full_name: (row.linked_full_name as string | null) ?? null,
+    linked_email: (row.linked_email as string | null) ?? null,
+  }));
+};
+
+const buildInvitationProjectSummaries = (projects: PortalInviteProjectCandidate[]) =>
+  projects.map((project) => ({
+    id: project.id,
+    currentTrackingLeadId: project.current_tracking_lead_id,
+    clientPortalUserId: project.client_portal_user_id,
+    clientName: project.client_name,
+    companyName: project.company_name,
+    displayName: project.company_name ?? project.client_name ?? "Projeto Valle",
+    flowType: project.flow_type,
+    flowLabel: getProjectFlowLabel(project.flow_type),
+    status: project.status,
+    statusLabel: getProjectStatusLabel(project.status),
+    updatedAt: project.updated_at,
+    trackingCode: project.tracking_code,
+    linkedClientUser: project.client_portal_user_id
+      ? {
+        id: project.client_portal_user_id,
+        full_name: project.linked_full_name,
+        email: project.linked_email,
+        access_status: "active",
+        is_active: true,
+      }
+      : null,
+  }));
+
+const getLatestClientPortalInvitation = async (leadId: string) => {
+  const [invitation] = await sql`
+    select
+      invitation.id::text as id,
+      invitation.status,
+      invitation.email,
+      invitation.full_name,
+      invitation.document_number,
+      invitation.expires_at,
+      invitation.accepted_at,
+      invitation.last_sent_at,
+      invitation.accepted_by_user_id::text as accepted_by_user_id,
+      accepted_profile.full_name as accepted_by_full_name,
+      accepted_profile.email as accepted_by_email
+    from public.client_portal_invitations invitation
+    left join public.profiles accepted_profile
+      on accepted_profile.id = invitation.accepted_by_user_id
+    where invitation.customer_tracking_lead_id = ${leadId}
+    order by
+      case when invitation.status = 'pending' then 0 else 1 end,
+      invitation.created_at desc
+    limit 1
+  `;
+
+  if (!invitation?.id) return null;
+
+  const projectRows = await sql`
+    select
+      project.id::text as id,
+      project.client_name,
+      project.company_name,
+      project.flow_type,
+      project.status,
+      project.updated_at,
+      project.tracking_code
+    from public.client_portal_invitation_projects invitation_project
+    join public.project_tracking_projects project
+      on project.id = invitation_project.project_id
+    where invitation_project.invitation_id = ${invitation.id as string}
+    order by project.updated_at desc, project.created_at desc
+  `;
+
+  return {
+    id: invitation.id as string,
+    status: invitation.status as ClientPortalInvitationStatus,
+    email: invitation.email as string,
+    fullName: (invitation.full_name as string | null) ?? null,
+    documentNumber: (invitation.document_number as string | null) ?? null,
+    expiresAt: invitation.expires_at as string,
+    acceptedAt: (invitation.accepted_at as string | null) ?? null,
+    lastSentAt: (invitation.last_sent_at as string | null) ?? null,
+    projectIds: projectRows.map((row) => row.id as string),
+    projects: projectRows.map((row) => ({
+      id: row.id as string,
+      displayName: (row.company_name as string | null) ?? (row.client_name as string | null) ?? "Projeto Valle",
+      flowLabel: getProjectFlowLabel(row.flow_type as TrackingFlowKey),
+      statusLabel: getProjectStatusLabel(row.status as "active" | "completed" | "paused"),
+      trackingCode: row.tracking_code as string,
+      updatedAt: row.updated_at as string,
+    })),
+    acceptedByUser: invitation.accepted_by_user_id
+      ? {
+        id: invitation.accepted_by_user_id as string,
+        full_name: (invitation.accepted_by_full_name as string | null) ?? null,
+        email: (invitation.accepted_by_email as string | null) ?? null,
+        access_status: "active",
+        is_active: true,
+      }
+      : null,
+  };
+};
+
 const parseArchivedSelection = (value: unknown): ArchivedSelection => {
   if (value === "archived" || value === "all") return value;
   return "active";
@@ -649,6 +859,47 @@ const normalizeTrackingFlowKey = (value: unknown): TrackingFlowKey | null => {
 
 const getTrackingFlowLabel = (flowKey: TrackingFlowKey) =>
   flowKey === "opening_company" ? "Abertura de empresa" : "Ja possui CNPJ";
+
+const getProjectFlowLabel = (flowType: TrackingFlowKey) =>
+  flowType === "opening_company" ? "Abertura da empresa" : "Implantacao do atendimento contabil";
+
+const getProjectStatusLabel = (status: "active" | "completed" | "paused") => {
+  switch (status) {
+    case "completed":
+      return "Concluido";
+    case "paused":
+      return "Pausado";
+    default:
+      return "Em andamento";
+  }
+};
+
+const buildPortalInviteMessage = ({
+  fullName,
+  activationUrl,
+  projects,
+}: {
+  fullName: string | null;
+  activationUrl: string;
+  projects: Array<{ displayName: string; flowLabel: string }>;
+}) => {
+  const opening = fullName ? `Ola, ${fullName}!` : "Ola!";
+  const projectLines = projects.map((project) => `- ${project.displayName} (${project.flowLabel})`);
+
+  return [
+    opening,
+    "",
+    "Seu acesso ao Portal do Cliente da Valle foi liberado.",
+    "",
+    "Projetos incluidos neste convite:",
+    ...projectLines,
+    "",
+    "Acesse o link abaixo para criar sua senha ou entrar na sua conta:",
+    activationUrl,
+    "",
+    "Se precisar, nossa equipe pode reenviar o acesso.",
+  ].join("\n");
+};
 
 const contactNotificationFields = [
   "company_or_person",
@@ -891,6 +1142,8 @@ serve(async (req) => {
         await sql`
           update public.project_tracking_projects
           set client_portal_user_id = ${clientUserId}
+            , portal_claimed_at = coalesce(portal_claimed_at, now())
+            , portal_claim_source = 'manual'
           where id = ${project.id as string}
         `;
 
@@ -909,6 +1162,8 @@ serve(async (req) => {
       await sql`
         update public.project_tracking_projects
         set client_portal_user_id = null
+          , portal_claimed_at = null
+          , portal_claim_source = null
         where id = ${project.id as string}
       `;
 
@@ -916,6 +1171,220 @@ serve(async (req) => {
         project_id: project.id,
         client_user: null,
       });
+    }
+
+    if (action === "get_client_portal_invitation_setup") {
+      if (!flags.canManageAll) return fail("Sem permissao para gerenciar convites do portal do cliente.", 403);
+
+      const id = body.id as string | undefined;
+      if (!id) return fail("Cliente nao informado.");
+
+      const [lead] = await sql`select * from public.leads where id = ${id} limit 1`;
+      if (!lead) return fail("Cliente nao encontrado.", 404);
+      if (!canAccessLead(lead, session)) return fail("Sem permissao para acessar este cliente.", 403);
+      if ((lead.entity_kind ?? "lead") !== "customer_tracking") {
+        return fail("Somente clientes em acompanhamento podem receber convite do portal.", 400);
+      }
+
+      const candidateProjects = await getClientPortalCandidateProjects(id);
+      const invitation = await getLatestClientPortalInvitation(id);
+
+      return json({
+        lead: {
+          id,
+          full_name: (lead.contact_name as string | null) ?? (lead.company_or_person as string | null) ?? null,
+          email: (lead.email as string | null) ?? null,
+          document_number: (lead.cnpj as string | null) ?? null,
+        },
+        projects: buildInvitationProjectSummaries(candidateProjects),
+        invitation,
+      });
+    }
+
+    if (action === "upsert_client_portal_invitation") {
+      if (!flags.canManageAll) return fail("Sem permissao para gerenciar convites do portal do cliente.", 403);
+
+      const id = body.id as string | undefined;
+      const email = normalizeOptionalString(body.email);
+      const emailNormalized = normalizeEmail(body.email);
+      const fullName = normalizeOptionalString(body.full_name);
+      const documentNumber = normalizeOptionalString(body.document_number);
+      const documentNumberNormalized = normalizeDocumentNumber(body.document_number);
+      const expiresInDays = Math.min(parsePositiveInteger(body.expires_in_days, 7), 30);
+      const projectIds = Array.isArray(body.project_ids)
+        ? Array.from(new Set(
+            body.project_ids
+              .filter((item): item is string => typeof item === "string")
+              .map((item) => item.trim())
+              .filter(Boolean),
+          ))
+        : [];
+
+      if (!id) return fail("Cliente nao informado.");
+      if (!email || !emailNormalized) return fail("Informe o e-mail do convite.");
+      if (projectIds.length === 0) return fail("Selecione ao menos um projeto para o convite.");
+
+      const [lead] = await sql`select * from public.leads where id = ${id} limit 1`;
+      if (!lead) return fail("Cliente nao encontrado.", 404);
+      if (!canEditLeadRecord(lead, session)) return fail("Sem permissao para alterar este cliente.", 403);
+      if ((lead.entity_kind ?? "lead") !== "customer_tracking") {
+        return fail("Somente clientes em acompanhamento podem receber convite do portal.", 400);
+      }
+
+      const candidateProjects = await getClientPortalCandidateProjects(id);
+      const candidateMap = new Map(candidateProjects.map((project) => [project.id, project]));
+
+      for (const projectId of projectIds) {
+        const project = candidateMap.get(projectId);
+        if (!project) {
+          return fail("Um dos projetos selecionados nao esta disponivel para este convite.", 400);
+        }
+
+        const linkedEmail = normalizeEmail(project.linked_email);
+        if (
+          project.client_portal_user_id &&
+          linkedEmail &&
+          linkedEmail !== emailNormalized
+        ) {
+          return fail(
+            `O projeto "${project.company_name ?? project.client_name ?? "Projeto Valle"}" ja esta vinculado a outra conta do portal.`,
+            409,
+          );
+        }
+      }
+
+      const rawToken = generatePortalInviteToken();
+      const tokenHash = await sha256Hex(rawToken);
+
+      const [pendingInvitation] = await sql`
+        select id::text as id
+        from public.client_portal_invitations
+        where customer_tracking_lead_id = ${id}
+          and status = 'pending'
+        limit 1
+      `;
+
+      let invitationId = pendingInvitation?.id as string | undefined;
+
+      if (invitationId) {
+        await sql`
+          update public.client_portal_invitations
+          set
+            token_hash = ${tokenHash},
+            email = ${email},
+            email_normalized = ${emailNormalized},
+            full_name = ${fullName},
+            document_number = ${documentNumber},
+            document_number_normalized = ${documentNumberNormalized},
+            expires_at = now() + (${expiresInDays}::text || ' days')::interval,
+            last_sent_at = now(),
+            accepted_at = null,
+            accepted_by_user_id = null,
+            revoked_by = null,
+            status = 'pending'
+          where id = ${invitationId}
+        `;
+
+        await sql`
+          delete from public.client_portal_invitation_projects
+          where invitation_id = ${invitationId}
+        `;
+      } else {
+        const [createdInvitation] = await sql`
+          insert into public.client_portal_invitations (
+            customer_tracking_lead_id,
+            token_hash,
+            email,
+            email_normalized,
+            full_name,
+            document_number,
+            document_number_normalized,
+            status,
+            expires_at,
+            created_by,
+            last_sent_at
+          ) values (
+            ${id},
+            ${tokenHash},
+            ${email},
+            ${emailNormalized},
+            ${fullName},
+            ${documentNumber},
+            ${documentNumberNormalized},
+            'pending',
+            now() + (${expiresInDays}::text || ' days')::interval,
+            ${userId},
+            now()
+          )
+          returning id::text as id
+        `;
+
+        invitationId = createdInvitation?.id as string | undefined;
+      }
+
+      if (!invitationId) {
+        throw new Error("Nao foi possivel gerar o convite do portal.");
+      }
+
+      for (const projectId of projectIds) {
+        await sql`
+          insert into public.client_portal_invitation_projects (invitation_id, project_id)
+          values (${invitationId}, ${projectId})
+          on conflict (invitation_id, project_id) do nothing
+        `;
+      }
+
+      const invitation = await getLatestClientPortalInvitation(id);
+      const selectedProjects = candidateProjects.filter((project) => projectIds.includes(project.id));
+      const activationPath = buildPortalInvitePath(rawToken);
+      const activationUrl = activationPath;
+      const message = buildPortalInviteMessage({
+        fullName,
+        activationUrl,
+        projects: selectedProjects.map((project) => ({
+          displayName: project.company_name ?? project.client_name ?? "Projeto Valle",
+          flowLabel: getProjectFlowLabel(project.flow_type),
+        })),
+      });
+
+      return json({
+        ok: true,
+        invitation,
+        activation_path: activationPath,
+        message,
+      });
+    }
+
+    if (action === "revoke_client_portal_invitation") {
+      if (!flags.canManageAll) return fail("Sem permissao para gerenciar convites do portal do cliente.", 403);
+
+      const invitationId = body.invitation_id as string | undefined;
+      if (!invitationId) return fail("Convite nao informado.");
+
+      const [invitation] = await sql`
+        select
+          invitation.id::text as id,
+          invitation.customer_tracking_lead_id::text as customer_tracking_lead_id
+        from public.client_portal_invitations invitation
+        join public.leads lead on lead.id = invitation.customer_tracking_lead_id
+        where invitation.id = ${invitationId}
+        limit 1
+      `;
+
+      if (!invitation?.id) return fail("Convite nao encontrado.", 404);
+
+      const [lead] = await sql`select * from public.leads where id = ${invitation.customer_tracking_lead_id as string} limit 1`;
+      if (!lead) return fail("Cliente nao encontrado.", 404);
+      if (!canEditLeadRecord(lead, session)) return fail("Sem permissao para alterar este cliente.", 403);
+
+      await sql`
+        update public.client_portal_invitations
+        set status = 'revoked',
+            revoked_by = ${userId}
+        where id = ${invitationId}
+      `;
+
+      return json({ ok: true });
     }
 
     if (action === "create") {
@@ -931,7 +1400,10 @@ serve(async (req) => {
       const trackingFlowKey = entityKind === "customer_tracking"
         ? normalizeTrackingFlowKey(targetFunnel.tracking_flow_key)
         : null;
-      const sourceLeadId = entityKind === "customer_tracking" ? crypto.randomUUID() : null;
+      // Manual customer-tracking records do not come from a commercial lead.
+      // We self-reference the row to satisfy the FK/check constraint pair.
+      const createdLeadId = crypto.randomUUID();
+      const sourceLeadId = entityKind === "customer_tracking" ? createdLeadId : null;
       if (entityKind === "customer_tracking" && !trackingFlowKey) {
         return fail("O fluxo de acompanhamento selecionado nao esta configurado.", 400);
       }
@@ -942,7 +1414,7 @@ serve(async (req) => {
 
       const [created] = await sql`
         insert into public.leads (
-          funnel_id, company_or_person, contact_name, phone, email, employee_count, employee_count_clt, employee_count_pj,
+          id, funnel_id, company_or_person, contact_name, phone, email, employee_count, employee_count_clt, employee_count_pj,
           cnpj, source, segment, segment_other, city, uf, contract_federal_regime, contract_state_registration,
           contract_monthly_fee, contract_fiscal_code, contract_accounting_code, contract_labor_code,
           contract_financial_codes, contract_include_address, owner_id, estimated_value, temperature, stage_id,
@@ -951,7 +1423,7 @@ serve(async (req) => {
           bank_account_count, bank_accounts_split, financial_system, accounting_pain_points, company_maturity, entity_kind,
           tracking_flow_key, source_lead_id, service_types, service_details, position, created_by, updated_by
         ) values (
-          ${lead.funnel_id as string}, ${lead.company_or_person as string}, ${lead.contact_name ?? null}, ${lead.phone ?? null},
+          ${createdLeadId}, ${lead.funnel_id as string}, ${lead.company_or_person as string}, ${lead.contact_name ?? null}, ${lead.phone ?? null},
           ${lead.email ?? null}, ${lead.employee_count ?? null}, ${lead.employee_count_clt ?? null}, ${lead.employee_count_pj ?? null},
           ${lead.cnpj ?? null}, ${lead.source ?? null}, ${lead.segment ?? null}, ${lead.segment_other ?? null}, ${lead.city ?? null},
           ${lead.uf ?? null}, ${lead.contract_federal_regime ?? null}, ${lead.contract_state_registration ?? null},

@@ -4,6 +4,11 @@ import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 import type {
+  ClientPortalClaimAccessResponse,
+  ClientPortalInvitationAcceptResponse,
+  ClientPortalInvitationContextResponse,
+  ClientPortalInvitationSetupResponse,
+  ClientPortalInvitationUpsertResponse,
   ClientPortalLinkResponse,
   ClientPortalOverviewResponse,
   ClientPortalProjectResponse,
@@ -83,6 +88,28 @@ const invokeProtectedFunction = async <T>(
         throw new Error("Sua sessao expirou ou nao foi encontrada. Entre novamente.");
       }
 
+      throw new Error(message);
+    }
+
+    throw error;
+  }
+
+  if (hasApiError(data) && data.error) {
+    throw new Error(data.error);
+  }
+
+  return data as T;
+};
+
+const invokeFunction = async <T>(
+  functionName: "client-portal-api" | "leads-api",
+  body: Record<string, unknown>,
+): Promise<T> => {
+  const { data, error } = await supabase.functions.invoke(functionName, { body });
+
+  if (error) {
+    if (error instanceof FunctionsHttpError) {
+      const message = await getFunctionsHttpErrorMessage(error);
       throw new Error(message);
     }
 
@@ -184,6 +211,34 @@ export const useSubmitClientReferral = () => {
   });
 };
 
+export const useClaimClientPortalAccess = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { documentNumber: string; trackingCode?: string }) =>
+      invokeProtectedFunction<ClientPortalClaimAccessResponse>("client-portal-api", {
+        action: "claim_access",
+        document_number: payload.documentNumber,
+        tracking_code: payload.trackingCode ?? "",
+      }),
+    onSuccess: async (data) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["client_portal_overview"] }),
+        queryClient.invalidateQueries({ queryKey: ["client_portal_project"] }),
+        queryClient.invalidateQueries({ queryKey: ["client_portal_referrals"] }),
+      ]);
+      toast.success(
+        data.claimedCount > 0
+          ? "Seus projetos foram liberados no portal."
+          : "Nao encontramos novos projetos para liberar com esses dados.",
+      );
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+};
+
 export const useClientPortalUsers = (enabled = true) =>
   useQuery({
     queryKey: ["client_portal_users"],
@@ -231,6 +286,91 @@ export const useSetClientPortalLink = () => {
     },
   });
 };
+
+export const useClientPortalInvitationSetup = (leadId: string | null, enabled = true) =>
+  useQuery({
+    queryKey: ["client_portal_invitation_setup", leadId],
+    enabled: enabled && !!leadId,
+    queryFn: () =>
+      invokeProtectedFunction<ClientPortalInvitationSetupResponse>("leads-api", {
+        action: "get_client_portal_invitation_setup",
+        id: leadId,
+      }),
+  });
+
+export const useUpsertClientPortalInvitation = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: {
+      leadId: string;
+      email: string;
+      fullName?: string;
+      documentNumber?: string;
+      projectIds: string[];
+      expiresInDays: number;
+    }) =>
+      invokeProtectedFunction<ClientPortalInvitationUpsertResponse>("leads-api", {
+        action: "upsert_client_portal_invitation",
+        id: payload.leadId,
+        email: payload.email,
+        full_name: payload.fullName ?? "",
+        document_number: payload.documentNumber ?? "",
+        project_ids: payload.projectIds,
+        expires_in_days: payload.expiresInDays,
+      }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["client_portal_invitation_setup", variables.leadId] });
+      queryClient.invalidateQueries({ queryKey: ["client_portal_link", variables.leadId] });
+      toast.success("Convite do portal preparado.");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+};
+
+export const useRevokeClientPortalInvitation = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { leadId: string; invitationId: string }) =>
+      invokeProtectedFunction<{ ok: boolean }>("leads-api", {
+        action: "revoke_client_portal_invitation",
+        invitation_id: payload.invitationId,
+      }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["client_portal_invitation_setup", variables.leadId] });
+      toast.success("Convite revogado.");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+};
+
+export const useClientPortalInvitationContext = (token: string | null, enabled = true) =>
+  useQuery({
+    queryKey: ["client_portal_invitation_context", token],
+    enabled: enabled && !!token,
+    queryFn: () =>
+      invokeFunction<ClientPortalInvitationContextResponse>("client-portal-api", {
+        action: "invitation_context",
+        token,
+      }),
+  });
+
+export const useAcceptClientPortalInvitation = () =>
+  useMutation({
+    mutationFn: (payload: { token: string }) =>
+      invokeProtectedFunction<ClientPortalInvitationAcceptResponse>("client-portal-api", {
+        action: "accept_invitation",
+        token: payload.token,
+      }),
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
 
 export const useUpdateClientPortalProfile = () => {
   const queryClient = useQueryClient();
