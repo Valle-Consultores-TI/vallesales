@@ -21,9 +21,9 @@ type ClientPortalShellProps = {
 };
 
 const tabItems = [
-  { key: "home", label: "Inicio", buildHref: (clientId: string) => `/cliente/${clientId}` },
+  { key: "home", label: "Início", buildHref: (clientId: string) => `/cliente/${clientId}` },
   { key: "acompanhar", label: "Acompanhar processos", buildHref: (clientId: string) => `/cliente/${clientId}/acompanhar` },
-  { key: "indicacoes", label: "Indicacoes", buildHref: (clientId: string) => `/cliente/${clientId}/indicacoes` },
+  { key: "indicacoes", label: "Indicações", buildHref: (clientId: string) => `/cliente/${clientId}/indicacoes` },
 ] as const;
 
 export const ClientPortalShell = ({
@@ -142,7 +142,7 @@ export const ClientPortalShell = ({
                     onChange={(event) => setDraftName(event.target.value)}
                     maxLength={120}
                     autoFocus
-                    placeholder="Como voce quer aparecer no portal"
+                    placeholder="Como você quer aparecer no portal"
                     className="border-white/15 bg-white/10 text-white placeholder:text-white/45"
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {

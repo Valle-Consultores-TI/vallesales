@@ -7,6 +7,8 @@ import {
   STATUS_LABELS,
   isDocumentValidationMode,
   normalizeOptionalString,
+  sanitizeDocumentNumber,
+  sanitizeTrackingCode,
 } from "../_shared/project-tracking.ts";
 
 const corsHeaders = {
@@ -37,6 +39,9 @@ const authClient = createClient(supabaseUrl, serviceRoleKey, {
 type ClientPortalPayload = {
   action?: unknown;
   project_id?: unknown;
+  tracking_code?: unknown;
+  document_number?: unknown;
+  token?: unknown;
   referred_company_or_person?: unknown;
   referred_contact_name?: unknown;
   referred_email?: unknown;
@@ -59,6 +64,14 @@ type SessionContext = {
   userId: string;
   fullName: string;
   email: string | null;
+  normalizedEmail: string | null;
+};
+
+type AuthenticatedIdentity = {
+  userId: string;
+  email: string | null;
+  normalizedEmail: string | null;
+  fullName: string;
 };
 
 type StepStatus = "pending" | "current" | "completed";
@@ -76,6 +89,39 @@ type LinkedProjectSummary = {
   statusLabel: string;
   updatedAt: string;
   trackingCode: string;
+};
+
+type ClaimSource = "manual" | "auto_email" | "auto_document" | "auto_email_document";
+
+type ProjectClaimCandidate = {
+  id: string;
+  documentNumberNormalized: string | null;
+  trackingCodeNormalized: string;
+};
+
+type InvitationStatus = "pending" | "accepted" | "expired" | "revoked";
+
+type InvitationProjectSummary = {
+  id: string;
+  displayName: string;
+  flowLabel: string;
+  statusLabel: string;
+  trackingCode: string;
+  updatedAt: string;
+};
+
+type InvitationRecord = {
+  id: string;
+  customerTrackingLeadId: string;
+  status: InvitationStatus;
+  email: string;
+  emailNormalized: string;
+  fullName: string | null;
+  documentNumber: string | null;
+  expiresAt: string;
+  acceptedAt: string | null;
+  acceptedByUserId: string | null;
+  projects: InvitationProjectSummary[];
 };
 
 const timelineBase = {
@@ -144,6 +190,19 @@ const normalizeTextKey = (value: string | null | undefined) =>
     .trim()
     .replace(/\s+/g, " ")
     .toLowerCase();
+
+const normalizeEmail = (value: string | null | undefined) => {
+  const normalized = normalizeOptionalString(value);
+  return normalized ? normalized.toLowerCase() : null;
+};
+
+const toHex = (buffer: ArrayBuffer) =>
+  Array.from(new Uint8Array(buffer))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+
+const sha256Hex = async (value: string) =>
+  toHex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
 
 const getDocumentValidationMode = async () => {
   const [settings] = await sql`
@@ -394,10 +453,37 @@ const getSessionContext = async (req: Request): Promise<SessionContext> => {
     throw new Response("Esta conta nao possui acesso ao portal do cliente.", { status: 403 });
   }
 
+  const email = (profile.email as string | null) ?? data.user.email ?? null;
+
   return {
     userId,
     fullName: (profile.full_name as string | null) ?? data.user.user_metadata?.full_name ?? data.user.email?.split("@")[0] ?? "Cliente",
-    email: (profile.email as string | null) ?? data.user.email ?? null,
+    email,
+    normalizedEmail: normalizeEmail(email),
+  };
+};
+
+const getAuthenticatedIdentity = async (req: Request): Promise<AuthenticatedIdentity> => {
+  const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+  if (!token) throw new Response("Sessao nao encontrada.", { status: 401 });
+
+  const { data, error } = await authClient.auth.getUser(token);
+  if (error || !data.user) throw new Response("Sessao invalida ou expirada.", { status: 401 });
+
+  const email = data.user.email ?? null;
+  const normalizedEmail = normalizeEmail(email);
+  const metadataName =
+    typeof data.user.user_metadata?.full_name === "string"
+      ? data.user.user_metadata.full_name
+      : typeof data.user.user_metadata?.name === "string"
+        ? data.user.user_metadata.name
+        : null;
+
+  return {
+    userId: data.user.id,
+    email,
+    normalizedEmail,
+    fullName: normalizeOptionalString(metadataName) ?? email?.split("@")[0] ?? "Cliente",
   };
 };
 
@@ -433,6 +519,280 @@ const getLinkedProjects = async (userId: string): Promise<LinkedProjectSummary[]
     trackingCode: row.tracking_code as string,
   }));
 };
+
+const getClaimCandidatesByEmail = async (
+  userId: string,
+  email: string,
+): Promise<ProjectClaimCandidate[]> => {
+  const rows = await sql`
+    select
+      id::text as id,
+      document_number_normalized,
+      tracking_code_normalized
+    from public.project_tracking_projects
+    where client_email_normalized = ${email}
+      and (client_portal_user_id is null or client_portal_user_id = ${userId})
+    order by updated_at desc, created_at desc
+  `;
+
+  return rows.map((row) => ({
+    id: row.id as string,
+    documentNumberNormalized: (row.document_number_normalized as string | null) ?? null,
+    trackingCodeNormalized: row.tracking_code_normalized as string,
+  }));
+};
+
+const getClaimCandidatesByDocument = async (
+  userId: string,
+  documentNumber: string,
+): Promise<ProjectClaimCandidate[]> => {
+  const rows = await sql`
+    select
+      id::text as id,
+      document_number_normalized,
+      tracking_code_normalized
+    from public.project_tracking_projects
+    where document_number_normalized = ${documentNumber}
+      and (client_portal_user_id is null or client_portal_user_id = ${userId})
+    order by updated_at desc, created_at desc
+  `;
+
+  return rows.map((row) => ({
+    id: row.id as string,
+    documentNumberNormalized: (row.document_number_normalized as string | null) ?? null,
+    trackingCodeNormalized: row.tracking_code_normalized as string,
+  }));
+};
+
+const claimProjects = async ({
+  userId,
+  projectIds,
+  source,
+}: {
+  userId: string;
+  projectIds: string[];
+  source: ClaimSource;
+}) => {
+  const uniqueProjectIds = Array.from(new Set(projectIds.filter(Boolean)));
+  if (uniqueProjectIds.length === 0) return 0;
+
+  const rows = await sql`
+    update public.project_tracking_projects
+    set
+      client_portal_user_id = ${userId},
+      portal_claimed_at = coalesce(portal_claimed_at, now()),
+      portal_claim_source = ${source}
+    where id = any(${uniqueProjectIds})
+      and (client_portal_user_id is null or client_portal_user_id = ${userId})
+    returning id
+  `;
+
+  return rows.length;
+};
+
+const attemptAutoClaimProjects = async (ctx: SessionContext) => {
+  if (!ctx.normalizedEmail) return 0;
+
+  const emailMatches = await getClaimCandidatesByEmail(ctx.userId, ctx.normalizedEmail);
+  if (emailMatches.length !== 1) return 0;
+
+  const [seedProject] = emailMatches;
+  const projectIds = seedProject.documentNumberNormalized
+    ? (await getClaimCandidatesByDocument(ctx.userId, seedProject.documentNumberNormalized)).map((project) => project.id)
+    : [seedProject.id];
+
+  return claimProjects({
+    userId: ctx.userId,
+    projectIds,
+    source: seedProject.documentNumberNormalized ? "auto_email_document" : "auto_email",
+  });
+};
+
+const claimProjectsWithDocument = async ({
+  ctx,
+  documentNumber,
+  trackingCode,
+}: {
+  ctx: SessionContext;
+  documentNumber: string;
+  trackingCode: string | null;
+}) => {
+  const documentMatches = await getClaimCandidatesByDocument(ctx.userId, documentNumber);
+  if (documentMatches.length === 0) {
+    throw new Response("Nao encontramos projetos para este CPF/CNPJ.", { status: 404 });
+  }
+
+  if (
+    trackingCode &&
+    !documentMatches.some((project) => project.trackingCodeNormalized === trackingCode)
+  ) {
+    throw new Response("O codigo informado nao corresponde ao CPF/CNPJ enviado.", { status: 404 });
+  }
+
+  const source: ClaimSource = ctx.normalizedEmail
+    ? "auto_email_document"
+    : "auto_document";
+
+  return claimProjects({
+    userId: ctx.userId,
+    projectIds: documentMatches.map((project) => project.id),
+    source,
+  });
+};
+
+const getClaimRequirementPayload = async () => ({
+  claimRequired: true,
+  claimDocumentValidationMode: await getDocumentValidationMode(),
+});
+
+const loadLinkedProjectsWithAutoClaim = async (ctx: SessionContext) => {
+  let projects = await getLinkedProjects(ctx.userId);
+  if (projects.length > 0) return projects;
+
+  await attemptAutoClaimProjects(ctx);
+  projects = await getLinkedProjects(ctx.userId);
+  return projects;
+};
+
+const loadInvitationByToken = async (token: string): Promise<InvitationRecord | null> => {
+  const normalizedToken = normalizeOptionalString(token);
+  if (!normalizedToken) return null;
+
+  const tokenHash = await sha256Hex(normalizedToken);
+  const [invitation] = await sql`
+    select
+      invitation.id::text as id,
+      invitation.customer_tracking_lead_id::text as customer_tracking_lead_id,
+      invitation.status,
+      invitation.email,
+      invitation.email_normalized,
+      invitation.full_name,
+      invitation.document_number,
+      invitation.expires_at,
+      invitation.accepted_at,
+      invitation.accepted_by_user_id::text as accepted_by_user_id
+    from public.client_portal_invitations invitation
+    where invitation.token_hash = ${tokenHash}
+    limit 1
+  `;
+
+  if (!invitation?.id) return null;
+
+  let status = invitation.status as InvitationStatus;
+  if (status === "pending" && new Date(invitation.expires_at as string).getTime() < Date.now()) {
+    await sql`
+      update public.client_portal_invitations
+      set status = 'expired'
+      where id = ${invitation.id as string}
+    `;
+    status = "expired";
+  }
+
+  const projectRows = await sql`
+    select
+      project.id::text as id,
+      project.client_name,
+      project.company_name,
+      project.flow_type,
+      project.status,
+      project.updated_at,
+      project.tracking_code
+    from public.client_portal_invitation_projects invitation_project
+    join public.project_tracking_projects project
+      on project.id = invitation_project.project_id
+    where invitation_project.invitation_id = ${invitation.id as string}
+    order by project.updated_at desc, project.created_at desc
+  `;
+
+  return {
+    id: invitation.id as string,
+    customerTrackingLeadId: invitation.customer_tracking_lead_id as string,
+    status,
+    email: invitation.email as string,
+    emailNormalized: invitation.email_normalized as string,
+    fullName: (invitation.full_name as string | null) ?? null,
+    documentNumber: (invitation.document_number as string | null) ?? null,
+    expiresAt: invitation.expires_at as string,
+    acceptedAt: (invitation.accepted_at as string | null) ?? null,
+    acceptedByUserId: (invitation.accepted_by_user_id as string | null) ?? null,
+    projects: projectRows.map((row) => ({
+      id: row.id as string,
+      displayName: (row.company_name as string | null) ?? (row.client_name as string | null) ?? "Projeto Valle",
+      flowLabel: FLOW_LABELS[row.flow_type as keyof typeof FLOW_LABELS],
+      statusLabel: STATUS_LABELS[row.status as keyof typeof STATUS_LABELS],
+      trackingCode: row.tracking_code as string,
+      updatedAt: row.updated_at as string,
+    })),
+  };
+};
+
+const ensureClientPortalRoleForUser = async (identity: AuthenticatedIdentity) => {
+  await sql`
+    insert into public.profiles (
+      id,
+      full_name,
+      email,
+      access_status,
+      is_active,
+      can_receive_leads
+    ) values (
+      ${identity.userId},
+      ${identity.fullName},
+      ${identity.email},
+      'active',
+      true,
+      false
+    )
+    on conflict (id) do update
+    set
+      email = coalesce(excluded.email, public.profiles.email),
+      full_name = coalesce(public.profiles.full_name, excluded.full_name),
+      access_status = 'active',
+      is_active = true
+  `;
+
+  await sql`
+    insert into public.user_roles (user_id, role)
+    values (${identity.userId}, 'cliente')
+    on conflict (user_id, role) do nothing
+  `;
+};
+
+const claimInvitationProjects = async (invitation: InvitationRecord, userId: string) => {
+  const projectIds = invitation.projects.map((project) => project.id);
+  if (projectIds.length === 0) {
+    throw new Response("Este convite nao possui projetos disponiveis.", { status: 400 });
+  }
+
+  const conflictingProjects = await sql`
+    select
+      project.id::text as id,
+      coalesce(project.company_name, project.client_name, 'Projeto Valle') as display_name
+    from public.project_tracking_projects project
+    where project.id = any(${projectIds})
+      and project.client_portal_user_id is not null
+      and project.client_portal_user_id <> ${userId}
+  `;
+
+  if (conflictingProjects.length > 0) {
+    const projectName = conflictingProjects[0].display_name as string;
+    throw new Response(`O projeto "${projectName}" ja esta vinculado a outra conta do portal.`, { status: 409 });
+  }
+
+  await sql`
+    update public.project_tracking_projects
+    set
+      client_portal_user_id = ${userId},
+      portal_claimed_at = coalesce(portal_claimed_at, now()),
+      portal_claim_source = 'manual'
+    where id = any(${projectIds})
+  `;
+};
+
+const buildInvitationRedirectPath = (userId: string, projects: InvitationProjectSummary[]) =>
+  projects.length === 1
+    ? `/cliente/${userId}/acompanhar?projeto=${encodeURIComponent(projects[0].id)}`
+    : `/cliente/${userId}`;
 
 const buildTrackingPayload = async (projectId: string) => {
   const documentValidationMode = await getDocumentValidationMode();
@@ -614,7 +974,7 @@ const resolveActiveProject = (
 };
 
 const notifyValleAdminsAboutClientLogin = async (ctx: SessionContext) => {
-  const linkedProjects = await getLinkedProjects(ctx.userId);
+  const linkedProjects = await loadLinkedProjectsWithAutoClaim(ctx);
   if (linkedProjects.length > 0) {
     return { notifiedAdminCount: 0, skipped: true as const };
   }
@@ -697,7 +1057,7 @@ const notifyValleAdminsAboutClientLogin = async (ctx: SessionContext) => {
 };
 
 const handleOverview = async (ctx: SessionContext) => {
-  const projects = await getLinkedProjects(ctx.userId);
+  const projects = await loadLinkedProjectsWithAutoClaim(ctx);
   const [referralCountRow] = await sql`
     select count(*)::int as count
     from public.referral_program_entries
@@ -713,6 +1073,7 @@ const handleOverview = async (ctx: SessionContext) => {
     },
     projects,
     referralsCount: Number(referralCountRow?.count ?? 0),
+    ...(projects.length === 0 ? await getClaimRequirementPayload() : { claimRequired: false }),
   });
 };
 
@@ -723,7 +1084,7 @@ const handleRecordLogin = async (ctx: SessionContext) => {
 
 const handleProject = async (ctx: SessionContext, body: ClientPortalPayload) => {
   const requestedProjectId = normalizeOptionalString(body.project_id);
-  const projects = await getLinkedProjects(ctx.userId);
+  const projects = await loadLinkedProjectsWithAutoClaim(ctx);
   const activeProject = resolveActiveProject(projects, requestedProjectId);
 
   if (requestedProjectId && !activeProject) {
@@ -740,12 +1101,13 @@ const handleProject = async (ctx: SessionContext, body: ClientPortalPayload) => 
     projects,
     activeProjectId: activeProject?.id ?? null,
     tracking: activeProject ? await buildTrackingPayload(activeProject.id) : null,
+    ...(projects.length === 0 ? await getClaimRequirementPayload() : { claimRequired: false }),
   });
 };
 
 const handleReferralList = async (ctx: SessionContext, body: ClientPortalPayload) => {
   const requestedProjectId = normalizeOptionalString(body.project_id);
-  const projects = await getLinkedProjects(ctx.userId);
+  const projects = await loadLinkedProjectsWithAutoClaim(ctx);
   const activeProject = resolveActiveProject(projects, requestedProjectId);
 
   if (requestedProjectId && !activeProject) {
@@ -810,12 +1172,13 @@ const handleReferralList = async (ctx: SessionContext, body: ClientPortalPayload
     projects,
     activeProjectId: activeProject?.id ?? null,
     referrals,
+    ...(projects.length === 0 ? await getClaimRequirementPayload() : { claimRequired: false }),
   });
 };
 
 const handleSubmitReferral = async (ctx: SessionContext, body: ClientPortalPayload) => {
   const requestedProjectId = normalizeOptionalString(body.project_id);
-  const projects = await getLinkedProjects(ctx.userId);
+  const projects = await loadLinkedProjectsWithAutoClaim(ctx);
   const activeProject = resolveActiveProject(projects, requestedProjectId);
 
   if (requestedProjectId && !activeProject) {
@@ -993,14 +1356,126 @@ const handleSubmitReferral = async (ctx: SessionContext, body: ClientPortalPaylo
   );
 };
 
+const handleClaimAccess = async (ctx: SessionContext, body: ClientPortalPayload) => {
+  const documentNumber = sanitizeDocumentNumber(body.document_number);
+  const trackingCode = sanitizeTrackingCode(body.tracking_code);
+
+  if (!documentNumber) {
+    return fail("Informe o CPF ou CNPJ para liberar seus projetos.");
+  }
+
+  const claimedCount = await claimProjectsWithDocument({
+    ctx,
+    documentNumber,
+    trackingCode: trackingCode || null,
+  });
+
+  const projects = await getLinkedProjects(ctx.userId);
+
+  return json({
+    ok: true,
+    claimedCount,
+    claimRequired: projects.length === 0,
+    projects,
+  });
+};
+
+const handleInvitationContext = async (body: ClientPortalPayload) => {
+  const token = normalizeOptionalString(body.token);
+  if (!token) return fail("Convite nao informado.", 400);
+
+  const invitation = await loadInvitationByToken(token);
+  if (!invitation) return fail("Convite nao encontrado ou invalido.", 404);
+
+  return json({
+    ok: true,
+    invitation: {
+      id: invitation.id,
+      status: invitation.status,
+      email: invitation.email,
+      fullName: invitation.fullName,
+      documentNumber: invitation.documentNumber,
+      expiresAt: invitation.expiresAt,
+      acceptedAt: invitation.acceptedAt,
+      projectCount: invitation.projects.length,
+      projects: invitation.projects,
+    },
+  });
+};
+
+const handleAcceptInvitation = async (identity: AuthenticatedIdentity, body: ClientPortalPayload) => {
+  const token = normalizeOptionalString(body.token);
+  if (!token) return fail("Convite nao informado.", 400);
+
+  const invitation = await loadInvitationByToken(token);
+  if (!invitation) return fail("Convite nao encontrado ou invalido.", 404);
+
+  if (!identity.normalizedEmail) {
+    return fail("Nao foi possivel identificar o e-mail da sua conta.", 400);
+  }
+
+  if (invitation.emailNormalized !== identity.normalizedEmail) {
+    return fail("Esta conta nao corresponde ao e-mail convidado para este acesso.", 403);
+  }
+
+  if (invitation.status === "revoked") {
+    return fail("Este convite foi revogado. Solicite um novo link a equipe da Valle.", 410);
+  }
+
+  if (invitation.status === "expired") {
+    return fail("Este convite expirou. Solicite um novo link a equipe da Valle.", 410);
+  }
+
+  if (invitation.status === "accepted" && invitation.acceptedByUserId && invitation.acceptedByUserId !== identity.userId) {
+    return fail("Este convite ja foi aceito por outra conta.", 409);
+  }
+
+  await ensureClientPortalRoleForUser(identity);
+  await claimInvitationProjects(invitation, identity.userId);
+
+  if (invitation.status !== "accepted") {
+    await sql`
+      update public.client_portal_invitations
+      set
+        status = 'accepted',
+        accepted_at = now(),
+        accepted_by_user_id = ${identity.userId}
+      where id = ${invitation.id}
+    `;
+  }
+
+  const redirectPath = buildInvitationRedirectPath(identity.userId, invitation.projects);
+
+  return json({
+    ok: true,
+    redirectPath,
+    projectsLinked: invitation.projects.length,
+    client: {
+      id: identity.userId,
+      email: identity.email,
+      fullName: identity.fullName,
+    },
+  });
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return fail("Metodo nao permitido.", 405);
 
   try {
     const body = (await req.json().catch(() => ({}))) as ClientPortalPayload;
-    const ctx = await getSessionContext(req);
     const action = normalizeOptionalString(body.action) ?? "overview";
+
+    if (action === "invitation_context") {
+      return await handleInvitationContext(body);
+    }
+
+    if (action === "accept_invitation") {
+      const identity = await getAuthenticatedIdentity(req);
+      return await handleAcceptInvitation(identity, body);
+    }
+
+    const ctx = await getSessionContext(req);
 
     if (action === "overview") {
       return await handleOverview(ctx);
@@ -1020,6 +1495,10 @@ serve(async (req) => {
 
     if (action === "submit_referral") {
       return await handleSubmitReferral(ctx, body);
+    }
+
+    if (action === "claim_access") {
+      return await handleClaimAccess(ctx, body);
     }
 
     return fail("Acao invalida.", 400);
