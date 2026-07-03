@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Copy, Link2, Loader2, MailPlus, Send, ShieldCheck } from "lucide-react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { Check, ChevronsUpDown, Copy, Link2, Loader2, MailPlus, Search, Send, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import {
+  useClientPortalInvitationProjectSearch,
+  useFindClientPortalInvitationProject,
   useClientPortalInvitationSetup,
-  useClientPortalLink,
-  useClientPortalUsers,
   useRevokeClientPortalInvitation,
-  useSetClientPortalLink,
   useUpsertClientPortalInvitation,
 } from "@/hooks/useClientPortal";
+import type { ClientPortalInvitationProject } from "@/types/client-portal";
 import type { Lead } from "@/types/crm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,8 +25,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 
 const INVITE_EXPIRY_OPTIONS = [
   { value: 3, label: "3 dias" },
@@ -67,21 +70,30 @@ export const ClientPortalAccessCard = ({ lead }: ClientPortalAccessCardProps) =>
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteFullName, setInviteFullName] = useState("");
   const [inviteDocument, setInviteDocument] = useState("");
+  const [projectLookupCode, setProjectLookupCode] = useState("");
+  const [projectSearchOpen, setProjectSearchOpen] = useState(false);
+  const [projectSearchQuery, setProjectSearchQuery] = useState("");
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [expiresInDays, setExpiresInDays] = useState<number>(7);
+  const [extraProjects, setExtraProjects] = useState<ClientPortalInvitationProject[]>([]);
+  const deferredProjectSearchQuery = useDeferredValue(projectSearchQuery);
 
   const invitationSetup = useClientPortalInvitationSetup(lead.id, true);
-  const clientPortalUsers = useClientPortalUsers(true);
-  const clientPortalLink = useClientPortalLink(lead.id, true);
-  const setClientPortalLink = useSetClientPortalLink();
   const upsertInvitation = useUpsertClientPortalInvitation();
+  const findInvitationProject = useFindClientPortalInvitationProject();
+  const projectSearch = useClientPortalInvitationProjectSearch(
+    lead.id,
+    inviteEmail,
+    deferredProjectSearchQuery,
+    modalOpen && projectSearchOpen,
+  );
   const revokeInvitation = useRevokeClientPortalInvitation();
 
   const invitation = invitationSetup.data?.invitation ?? null;
   const projects = invitationSetup.data?.projects;
-  const selectedClientUserId = clientPortalLink.data?.client_user?.id ?? "__none__";
 
   const resetInviteForm = useCallback(() => {
+    const setupProjects = invitationSetup.data?.projects ?? [];
     const nextEmail = invitation?.email ?? invitationSetup.data?.lead.email ?? lead.email ?? "";
     const nextFullName =
       invitation?.fullName ??
@@ -92,19 +104,26 @@ export const ClientPortalAccessCard = ({ lead }: ClientPortalAccessCardProps) =>
     const nextDocument = invitation?.documentNumber ?? invitationSetup.data?.lead.document_number ?? lead.cnpj ?? "";
     const nextProjectIds =
       invitation?.projectIds ??
-      (projects ?? [])
+      setupProjects
         .filter((project) => {
           const linkedEmail = normalizeEmail(project.linkedClientUser?.email);
           return !project.linkedClientUser || !linkedEmail || linkedEmail === normalizeEmail(nextEmail);
         })
         .map((project) => project.id);
+    const nextExtraProjects = (invitation?.projects ?? []).filter(
+      (project) => !setupProjects.some((setupProject) => setupProject.id === project.id),
+    );
 
     setInviteEmail(nextEmail);
     setInviteFullName(nextFullName);
     setInviteDocument(nextDocument);
+    setProjectLookupCode("");
+    setProjectSearchQuery("");
+    setProjectSearchOpen(false);
     setSelectedProjectIds(nextProjectIds);
+    setExtraProjects(nextExtraProjects);
     setExpiresInDays(7);
-  }, [invitation?.documentNumber, invitation?.email, invitation?.fullName, invitation?.projectIds, invitationSetup.data, lead.cnpj, lead.company_or_person, lead.contact_name, lead.email, projects]);
+  }, [invitation?.documentNumber, invitation?.email, invitation?.fullName, invitation?.projectIds, invitation?.projects, invitationSetup.data, lead.cnpj, lead.company_or_person, lead.contact_name, lead.email]);
 
   useEffect(() => {
     if (!invitationSetup.data) return;
@@ -113,7 +132,11 @@ export const ClientPortalAccessCard = ({ lead }: ClientPortalAccessCardProps) =>
 
   const projectOptions = useMemo(
     () =>
-      (projects ?? []).map((project) => {
+      Array.from(
+        new Map(
+          [...(projects ?? []), ...extraProjects].map((project) => [project.id, project] as const),
+        ).values(),
+      ).map((project) => {
         const linkedEmail = normalizeEmail(project.linkedClientUser?.email);
         const emailMatches = !linkedEmail || linkedEmail === normalizeEmail(inviteEmail);
         return {
@@ -121,12 +144,20 @@ export const ClientPortalAccessCard = ({ lead }: ClientPortalAccessCardProps) =>
           disabled: Boolean(project.linkedClientUser && !emailMatches),
         };
       }),
-    [projects, inviteEmail],
+    [projects, extraProjects, inviteEmail],
   );
 
   const selectedProjectLabels = projectOptions
     .filter((project) => selectedProjectIds.includes(project.id))
     .map((project) => `${project.displayName} (${project.flowLabel})`);
+
+  const searchedProjectOptions = useMemo(
+    () =>
+      (projectSearch.data ?? []).filter(
+        (project) => !projectOptions.some((selectedProject) => selectedProject.id === project.id),
+      ),
+    [projectOptions, projectSearch.data],
+  );
 
   const invitationStatusLabel = (() => {
     switch (invitation?.status) {
@@ -169,6 +200,14 @@ export const ClientPortalAccessCard = ({ lead }: ClientPortalAccessCardProps) =>
       return;
     }
 
+    const blockedProject = projectOptions.find(
+      (project) => selectedProjectIds.includes(project.id) && project.disabled,
+    );
+    if (blockedProject) {
+      toast.error(`O projeto ${blockedProject.displayName} ja esta vinculado a outro e-mail do portal.`);
+      return;
+    }
+
     try {
       const result = await upsertInvitation.mutateAsync({
         leadId: lead.id,
@@ -208,15 +247,42 @@ export const ClientPortalAccessCard = ({ lead }: ClientPortalAccessCardProps) =>
     );
   };
 
-  const handleClientPortalLinkChange = async (value: string) => {
-    try {
-      await setClientPortalLink.mutateAsync({
-        leadId: lead.id,
-        clientUserId: value === "__none__" ? null : value,
-      });
-    } catch {
-      // Mutation already surfaces feedback.
+  const appendProjectOption = useCallback((project: ClientPortalInvitationProject) => {
+    setExtraProjects((current) => {
+      if (current.some((currentProject) => currentProject.id === project.id)) return current;
+      return [...current, project];
+    });
+    setSelectedProjectIds((current) =>
+      current.includes(project.id) ? current : [...current, project.id],
+    );
+  }, []);
+
+  const handleAddProjectByCode = async () => {
+    const trackingCode = projectLookupCode.trim().toUpperCase();
+    if (!trackingCode) {
+      toast.error("Informe o codigo do projeto para adicionar.");
+      return;
     }
+
+    try {
+      const result = await findInvitationProject.mutateAsync({
+        leadId: lead.id,
+        trackingCode,
+      });
+
+      appendProjectOption(result.project);
+      setProjectLookupCode("");
+      toast.success("Projeto adicionado ao convite.");
+    } catch {
+      // Mutation hook already surfaces feedback.
+    }
+  };
+
+  const handleSelectAvailableProject = (project: ClientPortalInvitationProject) => {
+    appendProjectOption(project);
+    setProjectSearchOpen(false);
+    setProjectSearchQuery("");
+    toast.success("Projeto adicionado ao convite.");
   };
 
   const handleRevokeInvitation = async () => {
@@ -244,15 +310,10 @@ export const ClientPortalAccessCard = ({ lead }: ClientPortalAccessCardProps) =>
             <Badge variant="outline" className="border-accent/30 bg-background/70">
               {invitationStatusLabel}
             </Badge>
-            {clientPortalLink.data?.client_user ? (
-              <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700">
-                Usuario vinculado
-              </Badge>
-            ) : null}
           </div>
         </div>
 
-        {invitationSetup.isLoading || clientPortalUsers.isLoading || clientPortalLink.isLoading ? (
+        {invitationSetup.isLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             Carregando configuracoes do portal...
@@ -323,46 +384,6 @@ export const ClientPortalAccessCard = ({ lead }: ClientPortalAccessCardProps) =>
                 </Button>
               ) : null}
             </div>
-
-            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.65fr)]">
-              <div className="space-y-2">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Fallback manual</p>
-                <Select
-                  value={selectedClientUserId}
-                  onValueChange={(value) => void handleClientPortalLinkChange(value)}
-                  disabled={setClientPortalLink.isPending}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Selecione um usuario cliente" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Sem usuario vinculado</SelectItem>
-                    {(clientPortalUsers.data ?? []).map((portalUser) => (
-                      <SelectItem key={portalUser.id} value={portalUser.id}>
-                        {portalUser.full_name || portalUser.email || "Cliente sem nome"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Se precisar, voce ainda pode liberar o acesso vinculando manualmente uma conta cliente.
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-border/70 bg-background/70 px-3 py-2 text-sm">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Conta vinculada</p>
-                <p className="mt-1 font-medium text-foreground">
-                  {clientPortalLink.data?.client_user
-                    ? clientPortalLink.data.client_user.full_name || clientPortalLink.data.client_user.email || "Usuario cliente"
-                    : "Sem conta vinculada"}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {clientPortalLink.data?.client_user?.access_status === "active"
-                    ? "Portal pronto para login"
-                    : "Aguardando aceite ou vinculacao manual"}
-                </p>
-              </div>
-            </div>
           </>
         )}
       </Card>
@@ -426,6 +447,110 @@ export const ClientPortalAccessCard = ({ lead }: ClientPortalAccessCardProps) =>
           </div>
 
           <div className="space-y-3">
+            <div className="rounded-xl border border-border/70 bg-background/60 p-3">
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                <div className="min-w-0 space-y-2">
+                  <Label>Adicionar projeto disponivel</Label>
+                  <Popover open={projectSearchOpen} onOpenChange={setProjectSearchOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={projectSearchOpen}
+                        className="w-full justify-between"
+                      >
+                        <span className="truncate text-left">
+                          {inviteEmail.trim()
+                            ? "Selecionar projeto disponivel"
+                            : "Preencha o e-mail para ampliar os projetos elegiveis"}
+                        </span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[420px] p-0" align="start">
+                      <Command shouldFilter={false}>
+                        <CommandInput
+                          value={projectSearchQuery}
+                          onValueChange={setProjectSearchQuery}
+                          placeholder="Buscar por codigo, empresa ou cliente"
+                        />
+                        <CommandList>
+                          {projectSearch.isLoading ? (
+                            <div className="flex items-center gap-2 px-3 py-4 text-sm text-muted-foreground">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Buscando projetos disponiveis...
+                            </div>
+                          ) : null}
+                          {projectSearch.error ? (
+                            <div className="px-3 py-4 text-sm text-destructive">
+                              {projectSearch.error instanceof Error
+                                ? projectSearch.error.message
+                                : "Nao foi possivel carregar os projetos disponiveis."}
+                            </div>
+                          ) : null}
+                          {!projectSearch.isLoading && !projectSearch.error ? (
+                            <>
+                              <CommandEmpty>Nenhum projeto disponivel encontrado.</CommandEmpty>
+                              <CommandGroup>
+                                {searchedProjectOptions.map((project) => (
+                                  <CommandItem
+                                    key={project.id}
+                                    value={`${project.trackingCode} ${project.displayName} ${project.flowLabel}`}
+                                    onSelect={() => handleSelectAvailableProject(project)}
+                                  >
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <Check className={cn("h-4 w-4 opacity-0")} />
+                                        <span className="truncate font-medium">{project.displayName}</span>
+                                      </div>
+                                      <p className="pl-6 text-xs text-muted-foreground">
+                                        Codigo {project.trackingCode} - {project.flowLabel} - {project.statusLabel}
+                                      </p>
+                                    </div>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </>
+                          ) : null}
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <p className="text-xs text-muted-foreground">
+                    A lista consulta o backend e mostra projetos elegiveis para este convite.
+                  </p>
+                </div>
+
+                <div className="min-w-0 space-y-2">
+                  <Label htmlFor="portal-invite-project-code">Adicionar pelo codigo do projeto</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="portal-invite-project-code"
+                      value={projectLookupCode}
+                      onChange={(event) => setProjectLookupCode(event.target.value.toUpperCase())}
+                      placeholder="Ex.: VAL-12345"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void handleAddProjectByCode()}
+                      disabled={findInvitationProject.isPending}
+                    >
+                      {findInvitationProject.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Search className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Se voce ja souber o codigo, pode adicionar direto por aqui.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div className="flex items-center justify-between">
               <Label>Projetos incluidos no convite</Label>
               <span className="text-xs text-muted-foreground">{selectedProjectIds.length} selecionado(s)</span>

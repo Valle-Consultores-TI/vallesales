@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate } from "react-router-dom";
-import { Check, ChevronDown, Crown, Loader2, Pencil, ShieldCheck, UserRoundCheck, X } from "lucide-react";
+import { Check, ChevronDown, Crown, Loader2, Pencil, ShieldCheck, Trash2, UserRoundCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,10 +14,20 @@ import {
   UserAccessStatus,
   usePermissions,
 } from "@/hooks/useUserRoles";
-import { useProfiles } from "@/hooks/useLeads";
+import { invokeLeadsApi, useProfiles } from "@/hooks/useLeads";
 import { useFunnels } from "@/hooks/useFunnels";
 import { isOwnerEmail } from "@/lib/access";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -41,6 +51,7 @@ export const TeamManagement = () => {
   const profiles = useProfiles(perms.canManageTeam);
   const funnels = useFunnels(perms.canManageTeam);
   const qc = useQueryClient();
+  const [pendingDeleteProfile, setPendingDeleteProfile] = useState<Profile | null>(null);
 
   const allRoles = useQuery({
     queryKey: ["user_roles_all"],
@@ -139,6 +150,20 @@ export const TeamManagement = () => {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const deleteCrmUser = useMutation({
+    mutationFn: ({ userId }: { userId: string }) =>
+      invokeLeadsApi<{ ok: true; deleted_user_id: string }>({
+        action: "delete_crm_user",
+        user_id: userId,
+      }),
+    onSuccess: () => {
+      invalidateUserState();
+      setPendingDeleteProfile(null);
+      toast.success("Conta excluida do CRM.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   const rolesByUser = useMemo(() => {
     const order: Record<OperationalRole, number> = {
       admin: 1,
@@ -218,6 +243,7 @@ export const TeamManagement = () => {
                   <th className="px-4 py-3 font-medium text-muted-foreground">Funcao</th>
                   <th className="px-4 py-3 font-medium text-muted-foreground">Acesso aos funis</th>
                   <th className="px-4 py-3 text-center font-medium text-muted-foreground">Recebe leads</th>
+                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">Acoes</th>
                 </tr>
               </thead>
               <tbody>
@@ -238,7 +264,9 @@ export const TeamManagement = () => {
                         || setStatus.isPending
                         || setFunnelScope.isPending
                         || updateProfile.isPending
+                        || deleteCrmUser.isPending
                       }
+                      canDeleteUser={perms.isAdmin}
                       roleOptions={visibleRoleOptions}
                       onSaveName={(fullName) => updateProfile.mutate({ id: profile.id, full_name: fullName })}
                       onToggleReceive={(value) => updateProfile.mutate({ id: profile.id, can_receive_leads: value })}
@@ -247,6 +275,7 @@ export const TeamManagement = () => {
                       onChangeFunnelScope={(hasAllFunnelAccess, funnelIds) =>
                         setFunnelScope.mutate({ userId: profile.id, hasAllFunnelAccess, funnelIds })
                       }
+                      onRequestDelete={() => setPendingDeleteProfile(profile)}
                     />
                   );
                 })}
@@ -255,6 +284,34 @@ export const TeamManagement = () => {
           </div>
         </Card>
       )}
+
+      <AlertDialog open={!!pendingDeleteProfile} onOpenChange={(open) => !open && setPendingDeleteProfile(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir conta do CRM</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDeleteProfile
+                ? `Esta acao remove o login, o perfil e os acessos da conta ${pendingDeleteProfile.full_name || pendingDeleteProfile.email || "selecionada"}. Se essa pessoa ainda for responsavel por leads ativos, a exclusao sera bloqueada.`
+                : "Esta acao remove o login, o perfil e os acessos da conta selecionada."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteCrmUser.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteCrmUser.isPending || !pendingDeleteProfile}
+              onClick={(event) => {
+                event.preventDefault();
+                if (!pendingDeleteProfile) return;
+                deleteCrmUser.mutate({ userId: pendingDeleteProfile.id });
+              }}
+            >
+              {deleteCrmUser.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Excluir conta
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 };
@@ -267,12 +324,14 @@ const UserRow = ({
   currentUserId,
   currentUserIsAdmin,
   isBusy,
+  canDeleteUser,
   roleOptions,
   onSaveName,
   onToggleReceive,
   onChangeRole,
   onChangeStatus,
   onChangeFunnelScope,
+  onRequestDelete,
 }: {
   profile: Profile;
   role: OperationalRole | null;
@@ -281,12 +340,14 @@ const UserRow = ({
   currentUserId: string | null;
   currentUserIsAdmin: boolean;
   isBusy: boolean;
+  canDeleteUser: boolean;
   roleOptions: typeof ROLE_OPTIONS;
   onSaveName: (name: string) => void;
   onToggleReceive: (value: boolean) => void;
   onChangeRole: (role: OperationalRole) => void;
   onChangeStatus: (status: Exclude<UserAccessStatus, "pending">) => void;
   onChangeFunnelScope: (hasAllFunnelAccess: boolean, funnelIds: string[]) => void;
+  onRequestDelete: () => void;
 }) => {
   const [editing, setEditing] = useState(false);
   const [funnelPickerOpen, setFunnelPickerOpen] = useState(false);
@@ -297,6 +358,7 @@ const UserRow = ({
   const isSelf = currentUserId === profile.id;
   const isTargetAdmin = role === "admin";
   const canManageTarget = !isOwner && !isSelf && (currentUserIsAdmin || !isTargetAdmin);
+  const canDeleteTarget = canDeleteUser && canManageTarget;
   const roleValue = role ?? "__pending__";
   const canReceive = profile.can_receive_leads !== false;
   const canToggleReceive =
@@ -444,6 +506,21 @@ const UserRow = ({
                   </Button>
                 </div>
                 <p className="truncate text-xs text-muted-foreground">{profile.email}</p>
+                {canDeleteTarget ? (
+                  <div className="mt-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 border-destructive/30 text-destructive hover:text-destructive"
+                      disabled={isBusy}
+                      onClick={onRequestDelete}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Excluir conta
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>
@@ -583,6 +660,20 @@ const UserRow = ({
             {canToggleReceive ? "Elegivel" : status === "pending" ? "Pendente" : role === "visualizador" ? "Somente leitura" : "Bloqueado"}
           </span>
         </div>
+      </td>
+
+      <td className="px-4 py-3 text-right">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="text-destructive hover:text-destructive"
+          disabled={!canDeleteTarget || isBusy}
+          onClick={onRequestDelete}
+        >
+          <Trash2 className="h-4 w-4" />
+          Excluir
+        </Button>
       </td>
     </tr>
   );

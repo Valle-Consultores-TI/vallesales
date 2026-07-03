@@ -72,7 +72,7 @@ const refreshAccessToken = async () => {
   return data.session?.access_token ?? null;
 };
 
-const invokeLeadsApi = async <T>(body: Record<string, unknown>, retryOnAuthFailure = true): Promise<T> => {
+export const invokeLeadsApi = async <T>(body: Record<string, unknown>, retryOnAuthFailure = true): Promise<T> => {
   let accessToken = await readCurrentAccessToken();
 
   if (!accessToken) {

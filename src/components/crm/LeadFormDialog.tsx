@@ -19,6 +19,7 @@ import {
   formatCnpj,
   formatPhone,
   getServiceTypeOptionsForFunnel,
+  isIndicationLeadSource,
   isValidLeadPhone,
   LeadAdditionalContact,
   parseAdditionalContacts,
@@ -374,7 +375,7 @@ export const LeadFormDialog = ({
     if (!isValidLeadPhone(form.phone)) {
       nextErrors.phone = "Informe um telefone válido para o contato principal.";
     }
-    if ((form.source === "Indicação" || form.source === "Valle Indicação") && !form.indication_by.trim()) {
+    if (isIndicationLeadSource(form.source) && !form.indication_by.trim()) {
       nextErrors.indication_by = "Informe quem fez a indicação.";
     }
 
@@ -539,6 +540,8 @@ export const LeadFormDialog = ({
     onOpenChange(false);
   };
 
+  const shouldShowIndicationField = isIndicationLeadSource(form.source);
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -699,47 +702,46 @@ export const LeadFormDialog = ({
                 </Select>
               </FieldBlock>
 
-              <FieldBlock>
-                <Label>Origem do lead</Label>
-                <Select
-                  value={form.source || undefined}
-                  onValueChange={(value) => {
-                    patchForm({
-                      source: value,
-                      indication_by:
-                        value === "Indicação" || value === "Valle Indicação"
-                          ? form.indication_by
-                          : "",
-                    });
-                    clearError("indication_by");
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SOURCE_OPTIONS.map((source) => (
-                      <SelectItem key={source} value={source}>
-                        {formatLeadSourceLabel(source)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FieldBlock>
-
-              {(form.source === "Indicação" || form.source === "Valle Indicação") && (
-                <FieldBlock error={errors.indication_by}>
-                  <Label>Indicação por</Label>
-                  <Input
-                    placeholder="Quem indicou este lead?"
-                    value={form.indication_by}
-                    onChange={(event) => {
-                      patchForm({ indication_by: event.target.value });
+              <div className={cn("grid grid-cols-1 gap-4", shouldShowIndicationField && "md:col-span-2 md:grid-cols-2")}>
+                <FieldBlock>
+                  <Label>Origem do lead</Label>
+                  <Select
+                    value={form.source || undefined}
+                    onValueChange={(value) => {
+                      patchForm({
+                        source: value,
+                        indication_by: isIndicationLeadSource(value) ? form.indication_by : "",
+                      });
                       clearError("indication_by");
                     }}
-                  />
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SOURCE_OPTIONS.map((source) => (
+                        <SelectItem key={source} value={source}>
+                          {formatLeadSourceLabel(source)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </FieldBlock>
-              )}
+
+                {shouldShowIndicationField && (
+                  <FieldBlock error={errors.indication_by}>
+                    <Label>Indicação por</Label>
+                    <Input
+                      placeholder="Quem indicou este lead?"
+                      value={form.indication_by}
+                      onChange={(event) => {
+                        patchForm({ indication_by: event.target.value });
+                        clearError("indication_by");
+                      }}
+                    />
+                  </FieldBlock>
+                )}
+              </div>
 
               <FieldBlock>
                 <Label>Valor estimado (R$)</Label>

@@ -42,32 +42,32 @@ export const AppHeader = ({ active }: { active: AppHeaderSection }) => {
               <span className="hidden md:inline">Funil</span>
             </Button>
           </Link>
-          <Link to="/contatos">
-            <Button variant="ghost" size="sm" className={navClass("contatos")}>
-              <ContactRound className="h-4 w-4 md:mr-1.5" />
-              <span className="hidden md:inline">Contatos</span>
-            </Button>
-          </Link>
           <Link to="/arquivados">
             <Button variant="ghost" size="sm" className={navClass("arquivados")}>
               <Archive className="h-4 w-4 md:mr-1.5" />
-              <span className="hidden md:inline">Arquivados</span>
+              <span className="hidden md:inline">Finalizados</span>
             </Button>
           </Link>
           <Link to="/dashboard">
             <Button variant="ghost" size="sm" className={navClass("dashboard")}>
               <LayoutDashboard className="h-4 w-4 md:mr-1.5" />
-              <span className="hidden md:inline">Dashboard</span>
+              <span className="hidden md:inline">Resumo</span>
             </Button>
           </Link>
           {hasCustomerTrackingAccess && (
             <Link to="/acompanhamento">
               <Button variant="ghost" size="sm" className={navClass("acompanhamento")}>
                 <Briefcase className="h-4 w-4 md:mr-1.5" />
-                <span className="hidden md:inline">Acompanhamento</span>
+                <span className="hidden md:inline">Pós-vendas</span>
               </Button>
             </Link>
           )}
+          <Link to="/contatos">
+            <Button variant="ghost" size="sm" className={navClass("contatos")}>
+              <ContactRound className="h-4 w-4 md:mr-1.5" />
+              <span className="hidden md:inline">Contatos</span>
+            </Button>
+          </Link>
           <Link to="/configuracoes">
             <Button variant="ghost" size="sm" className={navClass("configuracoes")}>
               <Settings className="h-4 w-4 md:mr-1.5" />

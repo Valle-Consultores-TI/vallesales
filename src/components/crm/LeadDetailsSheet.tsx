@@ -569,29 +569,46 @@ export const LeadDetailsSheet = ({
                 value={formatCurrency(Number(lead.estimated_value))}
               />
             )}
-            {lead.next_follow_up && (
-              <Info
-                icon={<Calendar className="h-3.5 w-3.5" />}
-                label="Proximo follow-up"
-                value={formatDate(lead.next_follow_up)}
-              />
-            )}
-            {lead.cnpj && <Info label="CNPJ" value={lead.cnpj} />}
             {lead.contract_state_registration && <Info label="Inscrição Estadual" value={lead.contract_state_registration} />}
             {lead.employee_count && <Info label="Funcionários" value={lead.employee_count} />}
-            {sourceState.source && <Info label="Origem" value={formatLeadSourceLabel(sourceState.source)} />}
-            {sourceState.indication_by && <Info label="Indicação por" value={sourceState.indication_by} />}
             {lead.company_maturity && (
               <Info
                 label="Perfil empresarial"
                 value={COMPANY_MATURITY_LABELS[lead.company_maturity as keyof typeof COMPANY_MATURITY_LABELS] ?? lead.company_maturity}
               />
             )}
-            {lead.segment && <Info label="Segmento" value={lead.segment} />}
-            {lead.segment === "Outro" && lead.segment_other && (
-              <Info label="Segmento detalhado" value={lead.segment_other} />
+            {(lead.next_follow_up || lead.cnpj || sourceState.source || lead.segment || lead.tax_regime) && (
+              <div className="col-span-2 grid grid-cols-2 gap-3">
+                <div className="space-y-3">
+                  {lead.next_follow_up && (
+                    <Info
+                      icon={<Calendar className="h-3.5 w-3.5" />}
+                      label="Proximo follow-up"
+                      value={formatDate(lead.next_follow_up)}
+                    />
+                  )}
+                  {(lead.segment || lead.tax_regime) && (
+                    <div className="space-y-3">
+                      {lead.segment && <Info label="Segmento" value={lead.segment} />}
+                      {lead.segment === "Outro" && lead.segment_other && (
+                        <Info label="Segmento detalhado" value={lead.segment_other} />
+                      )}
+                      {lead.tax_regime && <Info label="Regime tributário" value={lead.tax_regime} />}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  {lead.cnpj && <Info label="CNPJ" value={lead.cnpj} />}
+                  {sourceState.source && (
+                    <div className="space-y-3">
+                      <Info label="Origem" value={formatLeadSourceLabel(sourceState.source)} />
+                      {sourceState.indication_by && <Info label="Indicação por" value={sourceState.indication_by} />}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
-            {lead.tax_regime && <Info label="Regime tributário" value={lead.tax_regime} />}
           </div>
 
           {isValleContractFunnel && (

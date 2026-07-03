@@ -162,6 +162,16 @@ export type ClientPortalInvitationUpsertResponse = {
   message: string;
 };
 
+export type ClientPortalInvitationProjectLookupResponse = {
+  ok: true;
+  project: ClientPortalInvitationProject;
+};
+
+export type ClientPortalInvitationProjectSearchResponse = {
+  ok: true;
+  projects: ClientPortalInvitationProject[];
+};
+
 export type ClientPortalInvitationContextResponse = {
   ok: true;
   invitation: {

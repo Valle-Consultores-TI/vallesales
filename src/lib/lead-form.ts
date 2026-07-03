@@ -100,6 +100,13 @@ const LEGACY_REFERRAL_PROGRAM_SOURCE_PREFIX = "Programa de Indicacao:";
 const REFERRAL_PROGRAM_SOURCE_LABEL = "Valle Indicacao";
 const LEGACY_REFERRAL_PROGRAM_SOURCE_LABEL = "Programa de Indicacao";
 
+const normalizeLeadSourceValue = (value: string | null | undefined) =>
+  (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+
 export const formatLeadSourceLabel = (source: string) => {
   if (source === "Indicacao") return "Indicação";
   if (source === LEGACY_REFERRAL_PROGRAM_SOURCE_LABEL || source === REFERRAL_PROGRAM_SOURCE_LABEL) return "Valle Indicação";
@@ -109,6 +116,19 @@ export const formatLeadSourceLabel = (source: string) => {
 export const buildReferralProgramSource = (indicationBy: string) => {
   const trimmed = indicationBy.trim();
   return trimmed ? `${REFERRAL_PROGRAM_SOURCE_PREFIX} ${trimmed}` : REFERRAL_PROGRAM_SOURCE_LABEL;
+};
+
+export const isIndicationLeadSource = (value: string | null | undefined) => {
+  const normalized = normalizeLeadSourceValue(value);
+
+  return (
+    normalized === "indicacao" ||
+    normalized === normalizeLeadSourceValue(REFERRAL_PROGRAM_SOURCE_LABEL) ||
+    normalized === normalizeLeadSourceValue(LEGACY_REFERRAL_PROGRAM_SOURCE_LABEL) ||
+    normalized.startsWith(normalizeLeadSourceValue(INDICATION_SOURCE_PREFIX)) ||
+    normalized.startsWith(normalizeLeadSourceValue(REFERRAL_PROGRAM_SOURCE_PREFIX)) ||
+    normalized.startsWith(normalizeLeadSourceValue(LEGACY_REFERRAL_PROGRAM_SOURCE_PREFIX))
+  );
 };
 
 export const isReferralProgramLeadSource = (value: string | null | undefined) =>

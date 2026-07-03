@@ -7,6 +7,8 @@ import type {
   ClientPortalClaimAccessResponse,
   ClientPortalInvitationAcceptResponse,
   ClientPortalInvitationContextResponse,
+  ClientPortalInvitationProjectLookupResponse,
+  ClientPortalInvitationProjectSearchResponse,
   ClientPortalInvitationSetupResponse,
   ClientPortalInvitationUpsertResponse,
   ClientPortalLinkResponse,
@@ -329,6 +331,40 @@ export const useUpsertClientPortalInvitation = () => {
     },
   });
 };
+
+export const useFindClientPortalInvitationProject = () =>
+  useMutation({
+    mutationFn: (payload: { leadId: string; trackingCode: string }) =>
+      invokeProtectedFunction<ClientPortalInvitationProjectLookupResponse>("leads-api", {
+        action: "find_client_portal_invitation_project",
+        id: payload.leadId,
+        tracking_code: payload.trackingCode,
+      }),
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+export const useClientPortalInvitationProjectSearch = (
+  leadId: string | null,
+  email: string,
+  query: string,
+  enabled = true,
+) =>
+  useQuery({
+    queryKey: ["client_portal_invitation_project_search", leadId, email, query],
+    enabled: enabled && !!leadId,
+    queryFn: async () => {
+      const data = await invokeProtectedFunction<ClientPortalInvitationProjectSearchResponse>("leads-api", {
+        action: "search_client_portal_invitation_projects",
+        id: leadId,
+        email,
+        query,
+      });
+      return data.projects;
+    },
+    staleTime: 15_000,
+  });
 
 export const useRevokeClientPortalInvitation = () => {
   const queryClient = useQueryClient();

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.104.1";
 import postgres from "npm:postgres@3.4.5";
+import { sanitizeTrackingCode } from "../_shared/project-tracking.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -72,6 +73,20 @@ type PortalInviteProjectCandidate = {
   linked_full_name: string | null;
   linked_email: string | null;
 };
+
+const mapPortalInviteProjectCandidate = (row: Record<string, unknown>): PortalInviteProjectCandidate => ({
+  id: row.id as string,
+  current_tracking_lead_id: (row.current_tracking_lead_id as string | null) ?? null,
+  client_portal_user_id: (row.client_portal_user_id as string | null) ?? null,
+  client_name: (row.client_name as string | null) ?? null,
+  company_name: (row.company_name as string | null) ?? null,
+  flow_type: row.flow_type as TrackingFlowKey,
+  status: row.status as "active" | "completed" | "paused",
+  updated_at: row.updated_at as string,
+  tracking_code: row.tracking_code as string,
+  linked_full_name: (row.linked_full_name as string | null) ?? null,
+  linked_email: (row.linked_email as string | null) ?? null,
+});
 
 const allowedLeadFields = new Set([
   "funnel_id",
@@ -214,6 +229,7 @@ const generatePortalInviteToken = () =>
   `${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`;
 
 const buildPortalInvitePath = (token: string) => `/cliente/ativar?token=${encodeURIComponent(token)}`;
+const OWNER_EMAIL = "marketing@valleconsultores.com.br";
 
 const countPhoneDigits = (value: string | null | undefined) => (value ?? "").replace(/\D/g, "").length;
 
@@ -474,6 +490,7 @@ const roleFlags = (roles: AppRole[]) => {
     canReadAll: isAdmin || isGestor || isVisualizador,
     canManageAll: isAdmin || isGestor,
     canCreate: isAdmin || isGestor || isConsultor,
+    isAdmin,
     isConsultor,
   };
 };
@@ -716,6 +733,7 @@ const getClientPortalCandidateProjects = async (leadId: string): Promise<PortalI
       project.company_name,
       project.flow_type,
       project.status,
+      project.created_at,
       project.updated_at,
       project.tracking_code,
       profile.full_name as linked_full_name,
@@ -724,25 +742,113 @@ const getClientPortalCandidateProjects = async (leadId: string): Promise<PortalI
     left join public.profiles profile
       on profile.id = project.client_portal_user_id
     where project.id = ${anchorProject.id as string}
-       or (${documentNumber} is not null and project.document_number_normalized = ${documentNumber})
-       or (${email} is not null and project.client_email_normalized = ${email})
-       or (${linkedUserId} is not null and project.client_portal_user_id = ${linkedUserId})
+       or (${documentNumber}::text is not null and project.document_number_normalized = ${documentNumber}::text)
+       or (${email}::text is not null and project.client_email_normalized = ${email}::text)
+       or (${linkedUserId}::uuid is not null and project.client_portal_user_id = ${linkedUserId}::uuid)
     order by project.updated_at desc, project.created_at desc
   `;
 
-  return rows.map((row) => ({
-    id: row.id as string,
-    current_tracking_lead_id: (row.current_tracking_lead_id as string | null) ?? null,
-    client_portal_user_id: (row.client_portal_user_id as string | null) ?? null,
-    client_name: (row.client_name as string | null) ?? null,
-    company_name: (row.company_name as string | null) ?? null,
-    flow_type: row.flow_type as TrackingFlowKey,
-    status: row.status as "active" | "completed" | "paused",
-    updated_at: row.updated_at as string,
-    tracking_code: row.tracking_code as string,
-    linked_full_name: (row.linked_full_name as string | null) ?? null,
-    linked_email: (row.linked_email as string | null) ?? null,
-  }));
+  return rows.map((row) => mapPortalInviteProjectCandidate(row as Record<string, unknown>));
+};
+
+const getClientPortalProjectsByIds = async (projectIds: string[]): Promise<PortalInviteProjectCandidate[]> => {
+  const uniqueIds = Array.from(new Set(projectIds.map((value) => value.trim()).filter(Boolean)));
+  if (uniqueIds.length === 0) return [];
+
+  const rows = await sql`
+    select
+      project.id::text as id,
+      project.current_tracking_lead_id::text as current_tracking_lead_id,
+      project.client_portal_user_id::text as client_portal_user_id,
+      project.client_name,
+      project.company_name,
+      project.flow_type,
+      project.status,
+      project.updated_at,
+      project.tracking_code,
+      profile.full_name as linked_full_name,
+      profile.email as linked_email
+    from public.project_tracking_projects project
+    left join public.profiles profile
+      on profile.id = project.client_portal_user_id
+    where project.id::text = any(${uniqueIds}::text[])
+    order by project.updated_at desc, project.created_at desc
+  `;
+
+  return rows.map((row) => mapPortalInviteProjectCandidate(row as Record<string, unknown>));
+};
+
+const getClientPortalProjectByTrackingCode = async (trackingCode: string): Promise<PortalInviteProjectCandidate | null> => {
+  const normalizedTrackingCode = sanitizeTrackingCode(trackingCode);
+  if (!normalizedTrackingCode) return null;
+
+  const [project] = await sql`
+    select
+      project.id::text as id,
+      project.current_tracking_lead_id::text as current_tracking_lead_id,
+      project.client_portal_user_id::text as client_portal_user_id,
+      project.client_name,
+      project.company_name,
+      project.flow_type,
+      project.status,
+      project.updated_at,
+      project.tracking_code,
+      profile.full_name as linked_full_name,
+      profile.email as linked_email
+    from public.project_tracking_projects project
+    left join public.profiles profile
+      on profile.id = project.client_portal_user_id
+    where project.tracking_code_normalized = public.normalize_tracking_code(${normalizedTrackingCode})
+    limit 1
+  `;
+
+  if (!project?.id) return null;
+  return mapPortalInviteProjectCandidate(project as Record<string, unknown>);
+};
+
+const searchClientPortalAvailableProjects = async ({
+  email,
+  query,
+}: {
+  email: string | null;
+  query: string | null;
+}): Promise<PortalInviteProjectCandidate[]> => {
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedQuery = normalizeOptionalString(query);
+  const searchPattern = normalizedQuery ? `%${normalizedQuery.replace(/\s+/g, "%")}%` : null;
+
+  const rows = await sql`
+    select
+      project.id::text as id,
+      project.current_tracking_lead_id::text as current_tracking_lead_id,
+      project.client_portal_user_id::text as client_portal_user_id,
+      project.client_name,
+      project.company_name,
+      project.flow_type,
+      project.status,
+      project.updated_at,
+      project.tracking_code,
+      profile.full_name as linked_full_name,
+      profile.email as linked_email
+    from public.project_tracking_projects project
+    left join public.profiles profile
+      on profile.id = project.client_portal_user_id
+    where (
+      project.client_portal_user_id is null
+      or profile.email is null
+      or (${normalizedEmail}::text is not null and lower(trim(profile.email)) = ${normalizedEmail}::text)
+    )
+      and (
+        ${searchPattern}::text is null
+        or project.tracking_code ilike ${searchPattern}::text
+        or coalesce(project.company_name, '') ilike ${searchPattern}::text
+        or coalesce(project.client_name, '') ilike ${searchPattern}::text
+      )
+    order by project.updated_at desc, project.created_at desc
+    limit 40
+  `;
+
+  return rows.map((row) => mapPortalInviteProjectCandidate(row as Record<string, unknown>));
 };
 
 const buildInvitationProjectSummaries = (projects: PortalInviteProjectCandidate[]) =>
@@ -1188,6 +1294,14 @@ serve(async (req) => {
 
       const candidateProjects = await getClientPortalCandidateProjects(id);
       const invitation = await getLatestClientPortalInvitation(id);
+      const selectedProjects = invitation?.projectIds?.length
+        ? await getClientPortalProjectsByIds(invitation.projectIds)
+        : [];
+      const projectMap = new Map<string, PortalInviteProjectCandidate>();
+
+      for (const project of [...candidateProjects, ...selectedProjects]) {
+        projectMap.set(project.id, project);
+      }
 
       return json({
         lead: {
@@ -1196,8 +1310,60 @@ serve(async (req) => {
           email: (lead.email as string | null) ?? null,
           document_number: (lead.cnpj as string | null) ?? null,
         },
-        projects: buildInvitationProjectSummaries(candidateProjects),
+        projects: buildInvitationProjectSummaries(Array.from(projectMap.values())),
         invitation,
+      });
+    }
+
+    if (action === "find_client_portal_invitation_project") {
+      if (!flags.canManageAll) return fail("Sem permissao para gerenciar convites do portal do cliente.", 403);
+
+      const id = body.id as string | undefined;
+      const trackingCode = sanitizeTrackingCode(body.tracking_code);
+
+      if (!id) return fail("Cliente nao informado.");
+      if (!trackingCode) return fail("Informe o codigo do projeto.");
+
+      const [lead] = await sql`select * from public.leads where id = ${id} limit 1`;
+      if (!lead) return fail("Cliente nao encontrado.", 404);
+      if (!canEditLeadRecord(lead, session)) return fail("Sem permissao para alterar este cliente.", 403);
+      if ((lead.entity_kind ?? "lead") !== "customer_tracking") {
+        return fail("Somente clientes em acompanhamento podem receber convite do portal.", 400);
+      }
+
+      const project = await getClientPortalProjectByTrackingCode(trackingCode);
+      if (!project) return fail("Nao encontramos um projeto com esse codigo.", 404);
+
+      return json({
+        ok: true,
+        project: buildInvitationProjectSummaries([project])[0],
+      });
+    }
+
+    if (action === "search_client_portal_invitation_projects") {
+      if (!flags.canManageAll) return fail("Sem permissao para gerenciar convites do portal do cliente.", 403);
+
+      const id = body.id as string | undefined;
+      const searchQuery = normalizeOptionalString(body.query);
+      const email = normalizeOptionalString(body.email);
+
+      if (!id) return fail("Cliente nao informado.");
+
+      const [lead] = await sql`select * from public.leads where id = ${id} limit 1`;
+      if (!lead) return fail("Cliente nao encontrado.", 404);
+      if (!canAccessLead(lead, session)) return fail("Sem permissao para acessar este cliente.", 403);
+      if ((lead.entity_kind ?? "lead") !== "customer_tracking") {
+        return fail("Somente clientes em acompanhamento podem receber convite do portal.", 400);
+      }
+
+      const projects = await searchClientPortalAvailableProjects({
+        email,
+        query: searchQuery,
+      });
+
+      return json({
+        ok: true,
+        projects: buildInvitationProjectSummaries(projects),
       });
     }
 
@@ -1232,7 +1398,10 @@ serve(async (req) => {
       }
 
       const candidateProjects = await getClientPortalCandidateProjects(id);
-      const candidateMap = new Map(candidateProjects.map((project) => [project.id, project]));
+      const selectedProjects = await getClientPortalProjectsByIds(projectIds);
+      const candidateMap = new Map(
+        [...candidateProjects, ...selectedProjects].map((project) => [project.id, project] as const),
+      );
 
       for (const projectId of projectIds) {
         const project = candidateMap.get(projectId);
@@ -1335,13 +1504,19 @@ serve(async (req) => {
       }
 
       const invitation = await getLatestClientPortalInvitation(id);
-      const selectedProjects = candidateProjects.filter((project) => projectIds.includes(project.id));
+      const selectedProjectSummaries = Array.from(
+        new Map(
+          selectedProjects
+            .filter((project) => projectIds.includes(project.id))
+            .map((project) => [project.id, project] as const),
+        ).values(),
+      );
       const activationPath = buildPortalInvitePath(rawToken);
       const activationUrl = activationPath;
       const message = buildPortalInviteMessage({
         fullName,
         activationUrl,
-        projects: selectedProjects.map((project) => ({
+        projects: selectedProjectSummaries.map((project) => ({
           displayName: project.company_name ?? project.client_name ?? "Projeto Valle",
           flowLabel: getProjectFlowLabel(project.flow_type),
         })),
@@ -1900,6 +2075,70 @@ serve(async (req) => {
       }
       await sql`delete from public.leads where id = ${id}`;
       return json({ ok: true });
+    }
+
+    if (action === "delete_crm_user") {
+      if (!flags.isAdmin) return fail("Somente administradores podem excluir contas do CRM.", 403);
+
+      const targetUserId = normalizeOptionalString(body.user_id);
+      if (!targetUserId) return fail("Usuario nao informado.");
+      if (targetUserId === userId) return fail("Nao e permitido excluir a propria conta por este fluxo.", 400);
+
+      const [targetProfile] = await sql`
+        select
+          p.id::text as id,
+          p.email,
+          p.full_name
+        from public.profiles p
+        where p.id = ${targetUserId}
+        limit 1
+      `;
+
+      if (!targetProfile?.id) return fail("Usuario nao encontrado.", 404);
+
+      const normalizedTargetEmail = normalizeEmail(targetProfile.email);
+      if (normalizedTargetEmail === OWNER_EMAIL) {
+        return fail("A conta principal protegida nao pode ser excluida.", 403);
+      }
+
+      const [ownedLeadSummary] = await sql`
+        select count(*)::int as total
+        from public.leads
+        where owner_id = ${targetUserId}
+          and is_archived = false
+      `;
+
+      const ownedLeadCount = Number(ownedLeadSummary?.total ?? 0);
+      if (ownedLeadCount > 0) {
+        return fail(
+          `Essa conta ainda esta responsavel por ${ownedLeadCount} lead(s)/cliente(s) ativo(s). Reatribua antes de excluir.`,
+          409,
+        );
+      }
+
+      const deleteAuthResult = await authClient.auth.admin.deleteUser(targetUserId);
+      if (deleteAuthResult.error) {
+        throw new Error(deleteAuthResult.error.message);
+      }
+
+      await sql.begin(async (tx) => {
+        await tx`delete from public.user_notifications where recipient_user_id = ${targetUserId}`;
+        await tx`delete from public.user_funnel_access where user_id = ${targetUserId}`;
+        await tx`delete from public.user_roles where user_id = ${targetUserId}`;
+        await tx`
+          update public.project_tracking_projects
+          set client_portal_user_id = null,
+              portal_claimed_at = null,
+              portal_claim_source = null
+          where client_portal_user_id = ${targetUserId}
+        `;
+        await tx`delete from public.profiles where id = ${targetUserId}`;
+      });
+
+      return json({
+        ok: true,
+        deleted_user_id: targetUserId,
+      });
     }
 
     return fail("Acao invalida.");
