@@ -6,13 +6,10 @@ import {
   CheckCircle2,
   ChevronRight,
   Copy,
-  Gift,
   Loader2,
   RefreshCcw,
   Send,
-  ShieldCheck,
   Sparkles,
-  Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,7 +33,7 @@ const formSchema = z.object({
   referrer_phone: z.string().trim(),
   referred_company_or_person: z.string().trim(),
   referred_contact_name: z.string().trim().min(2, "Informe o nome do contato indicado."),
-  referred_email: z.string().trim().email("Informe o e-mail do contato indicado."),
+  referred_email: z.string().trim(),
   referred_phone: z.string().trim(),
   city: z.string().trim(),
   uf: z.string().trim(),
@@ -118,24 +115,6 @@ const initialForm: FormState = {
   hp_field: "",
 };
 
-const journeyCards = [
-  {
-    title: "Indique",
-    description: "Indique com facilidade.",
-    icon: <Target className="h-4 w-4" />,
-  },
-  {
-    title: "Acompanhe",
-    description: "Acompanhe com transparência.",
-    icon: <ShieldCheck className="h-4 w-4" />,
-  },
-  {
-    title: "Resultado",
-    description: "Veja como a oportunidade evolui.",
-    icon: <Gift className="h-4 w-4" />,
-  },
-] as const;
-
 const presentationSteps = [
   {
     number: "01",
@@ -159,7 +138,7 @@ const presentationSteps = [
     number: "04",
     title: "Resultado final",
     description:
-      "Veja se a indicação avançou, se houve fechamento ou se a oportunidade não seguiu neste momento.",
+      "Veja se a indicação avançou, se houve fechamento ou se a oportunidade não seguiu neste momento. Se virar cliente, você ganha um prêmio pela indicação.",
   },
 ] as const;
 
@@ -189,7 +168,7 @@ const hypotheticalRewards = [
   },
   {
     title: "Contrato fechado",
-    body: "Se a indicação se tornar cliente da Valle, você pode receber uma premiação exclusiva, como bônus, desconto, cortesia, consultoria extra ou outro benefício definido pelo programa.",
+    body: "Se a indicação se tornar cliente da Valle, você ganha um prêmio exclusivo, como bônus, desconto, cortesia, consultoria extra ou outro benefício definido pelo programa.",
   },
 ] as const;
 
@@ -243,6 +222,9 @@ const referralTabs = [
   { key: "indicar", label: "Fazer indicação" },
   { key: "acompanhar", label: "Acompanhar indicação" },
 ] as const;
+
+const lightFieldClassName = "bg-white text-slate-900 caret-slate-900 placeholder:text-slate-500 [color-scheme:light] [&:-webkit-autofill]:[-webkit-text-fill-color:#0f172a] [&:-webkit-autofill]:shadow-[inset_0_0_0px_1000px_#fff]";
+const lightSelectTriggerClassName = "bg-white text-slate-900";
 
 const ReferralProgram = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -322,8 +304,9 @@ const ReferralProgram = () => {
       return false;
     }
 
-    const emailCheck = z.string().email().safeParse(form.referred_email.trim());
-    if (!emailCheck.success) {
+    const referredEmail = form.referred_email.trim();
+    const emailCheck = !referredEmail || z.string().email().safeParse(referredEmail).success;
+    if (!emailCheck) {
       toast.error("O e-mail da pessoa indicada está inválido.");
       return false;
     }
@@ -516,21 +499,6 @@ const ReferralProgram = () => {
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            {journeyCards.map((card) => (
-              <Card key={card.title} className="border-white/10 bg-white/8 text-white shadow-none backdrop-blur">
-                <CardContent className="space-y-2 p-3.5">
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/12 text-white">
-                    {card.icon}
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold text-white">{card.title}</p>
-                    <p className="mt-1 text-xs leading-5 text-white/70">{card.description}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
         </div>
       </section>
 
@@ -603,12 +571,18 @@ const ReferralProgram = () => {
               {activeTab === "indicar" ? (
                 <form className="space-y-5" onSubmit={handleSubmit}>
                   <div className="space-y-3 rounded-2xl border border-[#e3d8ce] bg-white p-4">
-                    <p className="text-sm font-semibold text-slate-900">Seus dados</p>
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-slate-900">Dados de quem está indicando</p>
+                      <p className="text-xs text-slate-600">
+                        Preencha abaixo com os seus dados, não com os dados da pessoa indicada.
+                      </p>
+                    </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="referrer-name">Nome *</Label>
+                      <Label htmlFor="referrer-name">Seu nome *</Label>
                       <Input
                         id="referrer-name"
+                        className={lightFieldClassName}
                         value={form.referrer_name}
                         onChange={(event) => patchForm({ referrer_name: event.target.value })}
                         placeholder="Seu nome"
@@ -620,6 +594,7 @@ const ReferralProgram = () => {
                       <Label htmlFor="referrer-company">Sua empresa</Label>
                       <Input
                         id="referrer-company"
+                        className={lightFieldClassName}
                         value={form.referrer_company}
                         onChange={(event) => patchForm({ referrer_company: event.target.value })}
                         placeholder="Nome da sua empresa"
@@ -628,9 +603,10 @@ const ReferralProgram = () => {
 
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="referrer-email">E-mail *</Label>
+                        <Label htmlFor="referrer-email">Seu e-mail *</Label>
                         <Input
                           id="referrer-email"
+                          className={lightFieldClassName}
                           type="email"
                           value={form.referrer_email}
                           onChange={(event) => patchForm({ referrer_email: event.target.value })}
@@ -640,9 +616,10 @@ const ReferralProgram = () => {
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="referrer-phone">Telefone/WhatsApp *</Label>
+                        <Label htmlFor="referrer-phone">Seu telefone/WhatsApp *</Label>
                         <Input
                           id="referrer-phone"
+                          className={lightFieldClassName}
                           value={form.referrer_phone}
                           onChange={(event) => patchForm({ referrer_phone: formatPhone(event.target.value) })}
                           placeholder="(31) 99999-9999"
@@ -660,6 +637,7 @@ const ReferralProgram = () => {
                       <Label htmlFor="referred-contact">Nome do contato *</Label>
                       <Input
                         id="referred-contact"
+                        className={lightFieldClassName}
                         value={form.referred_contact_name}
                         onChange={(event) => patchForm({ referred_contact_name: event.target.value })}
                         placeholder="Nome da pessoa"
@@ -671,6 +649,7 @@ const ReferralProgram = () => {
                       <Label htmlFor="referred-company">Empresa ou pessoa</Label>
                       <Input
                         id="referred-company"
+                        className={lightFieldClassName}
                         value={form.referred_company_or_person}
                         onChange={(event) => patchForm({ referred_company_or_person: event.target.value })}
                         placeholder="Nome da empresa ou profissional"
@@ -682,6 +661,7 @@ const ReferralProgram = () => {
                         <Label htmlFor="referred-phone">Telefone/WhatsApp *</Label>
                         <Input
                           id="referred-phone"
+                          className={lightFieldClassName}
                           value={form.referred_phone}
                           onChange={(event) => patchForm({ referred_phone: formatPhone(event.target.value) })}
                           placeholder="(31) 99999-9999"
@@ -691,14 +671,14 @@ const ReferralProgram = () => {
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="referred-email">E-mail *</Label>
+                        <Label htmlFor="referred-email">E-mail</Label>
                         <Input
                           id="referred-email"
+                          className={lightFieldClassName}
                           type="email"
                           value={form.referred_email}
                           onChange={(event) => patchForm({ referred_email: event.target.value })}
                           placeholder="contato@empresa.com"
-                          required
                         />
                       </div>
                     </div>
@@ -708,6 +688,7 @@ const ReferralProgram = () => {
                         <Label htmlFor="referred-city">Cidade</Label>
                         <Input
                           id="referred-city"
+                          className={lightFieldClassName}
                           value={form.city}
                           onChange={(event) => patchForm({ city: event.target.value })}
                           placeholder="Cidade"
@@ -717,7 +698,7 @@ const ReferralProgram = () => {
                       <div className="space-y-2">
                         <Label>UF</Label>
                         <Select value={form.uf || undefined} onValueChange={(value) => patchForm({ uf: value })}>
-                          <SelectTrigger>
+                          <SelectTrigger className={lightSelectTriggerClassName}>
                             <SelectValue placeholder="UF" />
                           </SelectTrigger>
                           <SelectContent>
@@ -760,6 +741,7 @@ const ReferralProgram = () => {
                       <Label htmlFor="referral-notes">Por que esta indicação faz sentido?</Label>
                       <Textarea
                         id="referral-notes"
+                        className={lightFieldClassName}
                         rows={4}
                         value={form.notes}
                         onChange={(event) => patchForm({ notes: event.target.value })}
@@ -795,6 +777,7 @@ const ReferralProgram = () => {
                     <div className="flex flex-col gap-3 sm:flex-row">
                       <Input
                         id="status-code"
+                        className={lightFieldClassName}
                         value={statusCode}
                         onChange={(event) => setStatusCode(event.target.value)}
                         placeholder="Cole o código ou acesse pelo link recebido."
@@ -835,7 +818,7 @@ const ReferralProgram = () => {
                             <p className="text-sm font-semibold text-slate-900">Indicação recebida</p>
                             <p className="mt-1 text-sm leading-6 text-slate-600">
                               {submitted.referred_company_or_person} entrou no fluxo do Valle Indicação.
-                              Guarde o código abaixo para acompanhar.
+                              O próximo passo é abrir ou guardar o link de acompanhamento abaixo.
                             </p>
                           </div>
                         </div>
@@ -859,22 +842,42 @@ const ReferralProgram = () => {
                         </div>
 
                         {trackingUrl && (
-                          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-                            <div className="rounded-2xl border border-[#e3d8ce] bg-white px-4 py-3">
+                          <div className="space-y-3 rounded-2xl border border-accent/30 bg-accent/10 p-4 shadow-sm">
+                            <div className="space-y-1">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                Próximo passo
+                              </p>
+                              <p className="text-sm font-semibold text-slate-900">
+                                Use este link para acompanhar sua indicação.
+                              </p>
+                              <p className="text-sm text-slate-600">
+                                Abra agora ou copie para guardar. Esse é o link que você vai usar depois.
+                              </p>
+                            </div>
+
+                            <div className="rounded-2xl border border-white/80 bg-white px-4 py-3">
                               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                                 Link de acompanhamento
                               </p>
-                              <p className="mt-1 break-all text-sm text-slate-900">{trackingUrl}</p>
+                              <p className="mt-1 break-all text-sm font-medium text-slate-900">{trackingUrl}</p>
                             </div>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="h-auto rounded-2xl px-4 py-3"
-                              onClick={() => handleCopy(trackingUrl, "Link copiado.")}
-                            >
-                              <Copy className="mr-2 h-4 w-4" />
-                              Copiar link
-                            </Button>
+
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <Button asChild type="button" variant="accent" className="h-auto rounded-2xl px-4 py-3 font-semibold">
+                                <a href={trackingUrl}>
+                                  Abrir acompanhamento
+                                </a>
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-auto rounded-2xl border-accent/25 bg-white px-4 py-3 font-semibold"
+                                onClick={() => handleCopy(trackingUrl, "Link copiado.")}
+                              >
+                                <Copy className="mr-2 h-4 w-4" />
+                                Copiar link
+                              </Button>
+                            </div>
                           </div>
                         )}
                       </CardContent>

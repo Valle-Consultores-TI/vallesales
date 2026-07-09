@@ -27,7 +27,6 @@ import {
 } from "@/hooks/useLeads";
 import { useAuth } from "@/hooks/useAuth";
 import { useFunnelAccessOptions } from "@/hooks/useFunnels";
-import { usePermissions } from "@/hooks/useUserRoles";
 import type { Lead, PipelineStage, Profile, TrackingFlowKey } from "@/types/crm";
 import { CONTACT_METHOD_OPTIONS, formatCurrency, formatDate, formatDateTime } from "@/lib/constants";
 import {
@@ -59,7 +58,7 @@ import { exportLeadAsExcel, exportLeadAsPdf } from "@/lib/lead-export";
 import { TRACKING_FLOW_LABELS, isValleSalesFunnel } from "@/lib/customer-tracking";
 import { COMPANY_MATURITY_LABELS, formatLeadSourceLabel, parseAdditionalContacts, parseLeadSource } from "@/lib/lead-form";
 import { buildValleContractServiceLabels, buildValleContractSummary, hasValleContractSelections } from "@/lib/valle-contract";
-import { ClientPortalAccessCard } from "@/components/crm/ClientPortalAccessCard";
+import { TrackingInviteCard } from "@/components/crm/TrackingInviteCard";
 import { toast } from "sonner";
 
 interface Props {
@@ -185,8 +184,6 @@ export const LeadDetailsSheet = ({
   const { data: assignableProfiles = [] } = useAssignableProfiles(lead?.funnel_id, !!lead?.funnel_id);
   const allFunnelsQuery = useFunnelAccessOptions(open, { module: "all" });
   const { user } = useAuth();
-  const perms = usePermissions();
-  const canManageClientPortalLink = perms.canManageTeam && lead?.entity_kind === "customer_tracking";
 
   useEffect(() => {
     setSelectedOwnerId(lead?.owner_id || "__none__");
@@ -320,17 +317,6 @@ export const LeadDetailsSheet = ({
       toast.error(error instanceof Error ? error.message : "Não foi possível enviar o cliente para acompanhamento.");
     } finally {
       setTransferringFlow(null);
-    }
-  };
-
-  const handleCopyTrackingCode = async () => {
-    if (!trackingCode) return;
-
-    try {
-      await navigator.clipboard.writeText(trackingCode);
-      toast.success("Código de acompanhamento copiado.");
-    } catch {
-      toast.error("Não foi possível copiar o código agora.");
     }
   };
 
@@ -517,25 +503,7 @@ export const LeadDetailsSheet = ({
               />
             )}
             {funnel && <Info label="Negócio" value={funnel.name} />}
-            {trackingCode && (
-              <div className="col-span-2 rounded-xl border border-accent/20 bg-accent/5 p-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <Info label="Código de acompanhamento" value={trackingCode} />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="shrink-0"
-                    onClick={handleCopyTrackingCode}
-                  >
-                    <Copy className="mr-2 h-3.5 w-3.5" />
-                    Copiar codigo
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {canManageClientPortalLink && <ClientPortalAccessCard lead={lead} />}
+            {trackingCode ? <TrackingInviteCard lead={lead} /> : null}
 
             <div className="col-span-2 space-y-1">
               <p className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-muted-foreground">

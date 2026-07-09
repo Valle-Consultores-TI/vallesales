@@ -360,7 +360,6 @@ const handleSubmitReferral = async (body: ReferralPayload) => {
   if (countPhoneDigits(referrerPhone) < 10) return fail("Informe um telefone valido para quem esta indicando.");
   if (!referredContactName) return fail("Informe o nome do contato indicado.");
   if (countPhoneDigits(referredPhone) < 10) return fail("Informe um telefone valido do contato indicado.");
-  if (!referredEmail) return fail("Informe o e-mail do contato indicado.");
 
   const referredLeadName = referredCompanyOrPerson ?? referredContactName;
 

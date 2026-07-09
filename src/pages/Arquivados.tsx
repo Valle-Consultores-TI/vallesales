@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
-import { LeadDetailsSheet } from "@/components/crm/LeadDetailsSheet";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useActiveFunnel } from "@/hooks/useActiveFunnel";
-import { useLeads, useProfiles, useReopenLead, useRestoreLead, useStages } from "@/hooks/useLeads";
+import { useDeleteLead, useLeads, useProfiles, useReopenLead, useRestoreLead, useStages } from "@/hooks/useLeads";
 import { usePermissions } from "@/hooks/useUserRoles";
 import { exportArchivedAsExcel } from "@/lib/lead-export";
 import { formatCurrency, formatDateTime } from "@/lib/constants";
@@ -30,6 +30,7 @@ import {
   Loader2,
   RotateCcw,
   Search,
+  Trash2,
   X,
   Download,
   FileSpreadsheet,
@@ -85,8 +86,7 @@ const ArchivedLeads = () => {
   const [selectedFunnelIds, setSelectedFunnelIds] = useState<string[]>([]);
   const [funnelFilterOpen, setFunnelFilterOpen] = useState(false);
   const [periodFilterOpen, setPeriodFilterOpen] = useState(false);
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
   const accessibleFunnelIds = useMemo(() => funnels.map((funnel) => funnel.id), [funnels]);
   const hasAvailableFunnels = accessibleFunnelIds.length > 0;
   const leads = useLeads(null, hasAvailableFunnels, { archived: "archived" });
@@ -94,6 +94,7 @@ const ArchivedLeads = () => {
   const profiles = useProfiles(hasAvailableFunnels);
   const restoreLead = useRestoreLead();
   const reopenLead = useReopenLead();
+  const deleteLead = useDeleteLead();
 
   useEffect(() => {
     const notificationFunnelId = searchParams.get("funnelId");
@@ -125,8 +126,7 @@ const ArchivedLeads = () => {
     const leadFromNotification = (leads.data ?? []).find((lead) => lead.id === notificationLeadId);
     if (!leadFromNotification) return;
 
-    setSelectedLead(leadFromNotification);
-    setDetailsOpen(true);
+    setExpandedLeadId(leadFromNotification.id);
 
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("leadId");
@@ -266,24 +266,32 @@ const ArchivedLeads = () => {
     (stages.error as Error | null) ??
     (profiles.error as Error | null);
 
-  const handleOpenLead = (lead: Lead) => {
-    setSelectedLead(lead);
-    setDetailsOpen(true);
-  };
-
   const handleRestore = async (lead: Lead) => {
     await restoreLead.mutateAsync(lead);
-    if (selectedLead?.id === lead.id) {
-      setDetailsOpen(false);
-      setSelectedLead(null);
+    if (expandedLeadId === lead.id) {
+      setExpandedLeadId(null);
     }
   };
 
   const handleReopen = async (lead: Lead) => {
     await reopenLead.mutateAsync({ id: lead.id });
-    if (selectedLead?.id === lead.id) {
-      setDetailsOpen(false);
-      setSelectedLead(null);
+    if (expandedLeadId === lead.id) {
+      setExpandedLeadId(null);
+    }
+  };
+
+  const handleDelete = async (lead: Lead, commercialStatus: ArchivedSituation) => {
+    if (!perms.canDeleteLead) return;
+
+    const targetLabel = commercialStatus === "won" ? "este cliente finalizado" : "este registro arquivado";
+    const shouldDelete = window.confirm(
+      `Deseja excluir ${targetLabel} permanentemente? Esta ação não pode ser desfeita.`,
+    );
+    if (!shouldDelete) return;
+
+    await deleteLead.mutateAsync(lead);
+    if (expandedLeadId === lead.id) {
+      setExpandedLeadId(null);
     }
   };
 
@@ -326,14 +334,6 @@ const ArchivedLeads = () => {
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
-                {false && <FilterStatCard
-                  label="Todos os arquivados"
-                  helper="Visão completa do histórico"
-                  value={String(scopedRows.length)}
-                  icon={<FolderArchive className="h-4 w-4" />}
-                  active={statusFilter === "all"}
-                  onClick={() => setStatusFilter("all")}
-                />}
                 <FilterStatCard
                   label="Fechados (clientes)"
                   helper="Clique para ver só clientes"
@@ -540,22 +540,24 @@ const ArchivedLeads = () => {
             </p>
           </Card>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-2">
-            {filteredRows.map((row) => {
-              const isMutating = restoreLead.isPending || reopenLead.isPending;
+          <Card className="overflow-hidden border-border/70 bg-card/90 shadow-card">
+            <Accordion
+              type="single"
+              collapsible
+              value={expandedLeadId ?? undefined}
+              onValueChange={(value) => setExpandedLeadId(value || null)}
+              className="divide-y divide-border/60"
+            >
+              {filteredRows.map((row) => {
+                const isMutating = restoreLead.isPending || reopenLead.isPending || deleteLead.isPending;
 
-              return (
-                <Card
-                  key={row.lead.id}
-                  className="group cursor-pointer border-border/70 bg-card/90 p-4 shadow-card transition-all hover:-translate-y-0.5 hover:border-accent/30 hover:shadow-lg"
-                  onClick={() => handleOpenLead(row.lead)}
-                >
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
+                return (
+                  <AccordionItem key={row.lead.id} value={row.lead.id} className="border-b-0 px-4 py-1">
+                    <AccordionTrigger className="gap-4 py-4 text-left hover:no-underline">
+                      <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge variant="outline" className={situationStyles[row.commercialStatus]}>
-                            {row.commercialStatus === "won" ? "Fechado (cliente)" : "Perdido"}
+                            {row.commercialStatus === "won" ? "Cliente finalizado" : "Perdido"}
                           </Badge>
                           <Badge variant="outline" className="border-border/70 bg-muted/30 text-muted-foreground">
                             {row.funnelName}
@@ -565,106 +567,87 @@ const ArchivedLeads = () => {
                           {row.lead.company_or_person}
                         </h3>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          {row.lead.contact_name || "Sem contato principal"} {row.lead.phone ? `• ${row.lead.phone}` : ""}
+                          {row.lead.contact_name || "Sem contato principal"}
                         </p>
                       </div>
+                    </AccordionTrigger>
 
-                      <div className="shrink-0 rounded-xl bg-accent/8 p-2 text-accent">
-                        {row.commercialStatus === "won" ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                    <AccordionContent className="pb-4">
+                      <div className="flex flex-col gap-3">
+                        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                          <InfoPill
+                            icon={<CalendarClock className="h-3.5 w-3.5" />}
+                            label="Arquivado em"
+                            value={formatDateTime(row.lead.archived_at)}
+                          />
+                          <InfoPill
+                            icon={<BriefcaseBusiness className="h-3.5 w-3.5" />}
+                            label={row.commercialStatus === "won" ? "Marcado como cliente" : "Marcado como perdido"}
+                            value={formatDateTime(row.commercialStatus === "lost" ? row.lead.lost_at : row.lead.won_at)}
+                          />
+                          <InfoPill label="Responsável" value={row.ownerName} />
+                          <InfoPill
+                            label="Valor"
+                            value={Number(row.lead.estimated_value) > 0 ? formatCurrency(row.lead.estimated_value) : "-"}
+                          />
+                          {row.lead.phone ? <InfoPill label="Telefone" value={row.lead.phone} /> : null}
+                          {row.lead.email ? <InfoPill label="E-mail" value={row.lead.email} /> : null}
+                        </div>
+
+                        {row.lead.loss_reason && (
+                          <div className="rounded-xl border border-destructive/15 bg-destructive/5 px-3 py-2 text-sm text-muted-foreground">
+                            <span className="font-medium text-foreground">Motivo da perda:</span> {row.lead.loss_reason}
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-2">
+                          {canEditLead(row.lead) && (
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={isMutating}
+                                onClick={() => void handleRestore(row.lead)}
+                              >
+                                <ArchiveRestore className="mr-1 h-3.5 w-3.5" />
+                                Restaurar ao funil
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="accent"
+                                disabled={isMutating}
+                                onClick={() => void handleReopen(row.lead)}
+                              >
+                                <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                                Reabrir negócio
+                              </Button>
+                            </>
+                          )}
+                          {perms.canDeleteLead && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={isMutating}
+                              className="border-destructive/25 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                              onClick={() => void handleDelete(row.lead, row.commercialStatus)}
+                            >
+                              <Trash2 className="mr-1 h-3.5 w-3.5" />
+                              {row.commercialStatus === "won" ? "Excluir cliente" : "Excluir registro"}
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="grid gap-2 md:grid-cols-2">
-                      <InfoPill
-                        icon={<CalendarClock className="h-3.5 w-3.5" />}
-                        label="Arquivado em"
-                        value={formatDateTime(row.lead.archived_at)}
-                      />
-                      <InfoPill
-                        icon={<BriefcaseBusiness className="h-3.5 w-3.5" />}
-                        label={row.commercialStatus === "won" ? "Marcado como cliente" : "Marcado como perdido"}
-                        value={formatDateTime(row.commercialStatus === "lost" ? row.lead.lost_at : row.lead.won_at)}
-                      />
-                      <InfoPill label="Responsável" value={row.ownerName} />
-                      <InfoPill
-                        label="Valor"
-                        value={Number(row.lead.estimated_value) > 0 ? formatCurrency(row.lead.estimated_value) : "-"}
-                      />
-                    </div>
-
-                    {row.lead.loss_reason && (
-                      <div className="rounded-xl border border-destructive/15 bg-destructive/5 px-3 py-2 text-sm text-muted-foreground">
-                        <span className="font-medium text-foreground">Motivo da perda:</span> {row.lead.loss_reason}
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleOpenLead(row.lead);
-                        }}
-                      >
-                        Ver detalhes
-                      </Button>
-                      {canEditLead(row.lead) && (
-                        <>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={isMutating}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void handleRestore(row.lead);
-                            }}
-                          >
-                            <ArchiveRestore className="mr-1 h-3.5 w-3.5" />
-                            Restaurar ao funil
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="accent"
-                            disabled={isMutating}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void handleReopen(row.lead);
-                            }}
-                          >
-                            <RotateCcw className="mr-1 h-3.5 w-3.5" />
-                            Reabrir negócio
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                );
+              })}
+            </Accordion>
+          </Card>
         )}
       </main>
-
-      <LeadDetailsSheet
-        lead={selectedLead}
-        open={detailsOpen}
-        onOpenChange={setDetailsOpen}
-        onLeadChange={setSelectedLead}
-        profiles={profiles.data ?? []}
-        stages={stages.data ?? []}
-        canEditLead={selectedLead ? canEditLead(selectedLead) : false}
-        canDeleteLead={false}
-        restoreLead={selectedLead ? async () => {
-          await handleRestore(selectedLead);
-        } : undefined}
-        reopenLead={selectedLead ? async () => {
-          await handleReopen(selectedLead);
-        } : undefined}
-      />
     </div>
   );
 };

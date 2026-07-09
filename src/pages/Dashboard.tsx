@@ -85,11 +85,27 @@ const formatDashboardDateRangeLabel = (range?: DateRange) => {
   return "Todo o historico";
 };
 
+const filterLeadsByCreatedAt = <T extends { created_at: string }>(allLeads: T[], range?: DateRange) => {
+  const periodStart = range?.from ? normalizeRangeStart(range.from) : null;
+  const periodEnd = normalizeRangeEnd(range?.to ?? range?.from ?? new Date());
+
+  if (!periodStart) return allLeads;
+
+  return allLeads.filter((lead) => {
+    const createdAt = parseDateValue(lead.created_at);
+    return !!createdAt && createdAt >= periodStart && createdAt <= periodEnd;
+  });
+};
+
 const Dashboard = () => {
   const { activeFunnel, activeFunnelId, loading: funnelLoading } = useActiveFunnel();
   const activeFunnelReady = !funnelLoading && !!activeFunnelId && !!activeFunnel;
   const stages = useStages(activeFunnelId, activeFunnelReady);
-  const leads = useLeads(activeFunnelId, activeFunnelReady);
+  const activeLeads = useLeads(activeFunnelId, activeFunnelReady);
+  const commercialLeads = useLeads(activeFunnelId, activeFunnelReady, {
+    archived: "all",
+    entityKind: "lead",
+  });
   const dashboardExportRef = useRef<HTMLDivElement | null>(null);
   const [analysisDateRange, setAnalysisDateRange] = useState<DateRange | undefined>();
   const [periodFilterOpen, setPeriodFilterOpen] = useState(false);
@@ -100,18 +116,15 @@ const Dashboard = () => {
     return date;
   }, []);
 
-  const filteredLeads = useMemo(() => {
-    const allLeads = leads.data ?? [];
-    const periodStart = analysisDateRange?.from ? normalizeRangeStart(analysisDateRange.from) : null;
-    const periodEnd = normalizeRangeEnd(analysisDateRange?.to ?? analysisDateRange?.from ?? new Date());
+  const filteredActiveLeads = useMemo(
+    () => filterLeadsByCreatedAt(activeLeads.data ?? [], analysisDateRange),
+    [activeLeads.data, analysisDateRange],
+  );
 
-    if (!periodStart) return allLeads;
-
-    return allLeads.filter((lead) => {
-      const createdAt = parseDateValue(lead.created_at);
-      return !!createdAt && createdAt >= periodStart && createdAt <= periodEnd;
-    });
-  }, [analysisDateRange, leads.data]);
+  const filteredCommercialLeads = useMemo(
+    () => filterLeadsByCreatedAt(commercialLeads.data ?? [], analysisDateRange),
+    [commercialLeads.data, analysisDateRange],
+  );
 
   const periodSummaryLabel = useMemo(() => {
     if (!analysisDateRange?.from) return "Analise considerando todo o historico de cadastro.";
@@ -119,14 +132,15 @@ const Dashboard = () => {
   }, [analysisDateRange]);
 
   const metrics = useMemo(() => {
-    const allLeads = filteredLeads;
+    const allLeads = filteredCommercialLeads;
+    const activeLeadList = filteredActiveLeads;
     const allStages = stages.data ?? [];
     const wonStage = allStages.find((stage) => stage.is_won);
     const lostStage = allStages.find((stage) => stage.is_lost);
 
     const wonLeads = allLeads.filter((lead) => lead.stage_id === wonStage?.id);
     const lostLeads = allLeads.filter((lead) => lead.stage_id === lostStage?.id);
-    const openLeads = allLeads.filter(
+    const openLeads = activeLeadList.filter(
       (lead) => lead.stage_id !== wonStage?.id && lead.stage_id !== lostStage?.id,
     );
 
@@ -176,9 +190,9 @@ const Dashboard = () => {
       conversionRate,
       byStage,
     };
-  }, [filteredLeads, stages.data, today]);
+  }, [filteredActiveLeads, filteredCommercialLeads, stages.data, today]);
 
-  const loading = funnelLoading || stages.isLoading || leads.isLoading;
+  const loading = funnelLoading || stages.isLoading || activeLeads.isLoading || commercialLeads.isLoading;
 
   const handleExportDashboardPdf = async () => {
     if (!dashboardExportRef.current) {
