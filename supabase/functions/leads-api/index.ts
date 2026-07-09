@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.104.1";
 import postgres from "npm:postgres@3.4.5";
 import { sanitizeTrackingCode } from "../_shared/project-tracking.ts";
+import { runNeocontadorFirstContactAutomation } from "../_shared/neocontador-first-contact.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1624,7 +1625,14 @@ serve(async (req) => {
         userId,
         entityKind === "customer_tracking" ? { flow_key: trackingFlowKey } : null,
       );
-      const hydratedLead = await attachTrackingCode(created as LeadRow);
+      await runNeocontadorFirstContactAutomation({
+        sql,
+        leadId: created.id as string,
+        actorUserId: userId,
+      });
+
+      const [latestCreated] = await sql`select * from public.leads where id = ${created.id} limit 1`;
+      const hydratedLead = await attachTrackingCode((latestCreated ?? created) as LeadRow);
       return json({ lead: normalizeLead(hydratedLead) }, 201);
     }
 

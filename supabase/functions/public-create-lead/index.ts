@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import postgres from "npm:postgres@3.4.5";
+import { runNeocontadorFirstContactAutomation } from "../_shared/neocontador-first-contact.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -217,6 +218,11 @@ serve(async (req) => {
           ${`Lead criado via API: ${createdLead.company_or_person}`}
         )
       `;
+
+      await runNeocontadorFirstContactAutomation({
+        sql,
+        leadId: createdLead.id as string,
+      });
     }
 
     return json({ ok: true, lead_id: createdLead?.id ?? null }, 201);
