@@ -234,7 +234,7 @@ export const LeadDetailsSheet = ({
   const owner = profiles.find((profile) => profile.id === lead.owner_id);
   const ownerName = owner?.full_name || owner?.email || null;
   const lossReason = lead.loss_reason?.trim();
-  const trackingCode = lead.entity_kind === "customer_tracking" ? lead.tracking_code?.trim() ?? "" : "";
+  const trackingCode = lead.tracking_code?.trim() ?? "";
   const valleContractSummary = isValleContractFunnel ? buildValleContractSummary(lead) : "";
   const valleContractServiceLabels = isValleContractFunnel ? buildValleContractServiceLabels(lead) : [];
   const assignableIds = new Set(assignableProfiles.map((profile) => profile.id));
@@ -328,6 +328,17 @@ export const LeadDetailsSheet = ({
       toast.success("Dados do contrato copiados.");
     } catch {
       toast.error("Não foi possível copiar os dados do contrato agora.");
+    }
+  };
+
+  const handleCopyTrackingCode = async () => {
+    if (!trackingCode) return;
+
+    try {
+      await navigator.clipboard.writeText(trackingCode);
+      toast.success("Código de acompanhamento copiado.");
+    } catch {
+      toast.error("Não foi possível copiar o código agora.");
     }
   };
 
@@ -503,7 +514,7 @@ export const LeadDetailsSheet = ({
               />
             )}
             {funnel && <Info label="Negócio" value={funnel.name} />}
-            {trackingCode ? <TrackingInviteCard lead={lead} /> : null}
+            {lead.entity_kind === "customer_tracking" && trackingCode ? <TrackingInviteCard lead={lead} /> : null}
 
             <div className="col-span-2 space-y-1">
               <p className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -579,6 +590,37 @@ export const LeadDetailsSheet = ({
             )}
           </div>
 
+          {isReferralProgramLead && (
+            <Card className="space-y-3 border-accent/25 bg-accent/5 p-4">
+              <div>
+                <h4 className="text-sm font-semibold text-foreground">Valle Indicação</h4>
+                <p className="text-xs text-muted-foreground">
+                  Este lead entrou pelo fluxo público de indicações e precisa de abordagem comercial diferenciada.
+                </p>
+              </div>
+              {sourceState.indication_by && (
+                <Info label="Cliente que indicou" value={sourceState.indication_by} />
+              )}
+              {trackingCode && (
+                <div className="rounded-xl border border-accent/25 bg-background/80 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <Info label="Código de acompanhamento" value={trackingCode} />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0"
+                      onClick={handleCopyTrackingCode}
+                    >
+                      <Copy className="mr-2 h-3.5 w-3.5" />
+                      Copiar
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </Card>
+          )}
+
           {isValleContractFunnel && (
             <Card className="space-y-3 border-accent/25 bg-accent/5 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -619,20 +661,6 @@ export const LeadDetailsSheet = ({
             </Card>
           )}
 
-          {isReferralProgramLead && (
-            <Card className="space-y-3 border-accent/25 bg-accent/5 p-4">
-              <div>
-                <h4 className="text-sm font-semibold text-foreground">Valle Indicação</h4>
-                <p className="text-xs text-muted-foreground">
-                  Este lead entrou pelo fluxo público de indicações e precisa de abordagem comercial diferenciada.
-                </p>
-              </div>
-              {sourceState.indication_by && (
-                <Info label="Cliente que indicou" value={sourceState.indication_by} />
-              )}
-            </Card>
-          )}
-
           {isLost && lossReason && (
             <Card className="space-y-3 border-destructive/30 bg-destructive/5 p-4">
               <div className="flex items-center gap-2 text-destructive">
@@ -645,7 +673,7 @@ export const LeadDetailsSheet = ({
             </Card>
           )}
 
-          {(lead.contact_name || lead.phone || lead.email) && (
+          {!isReferralProgramLead && (lead.contact_name || lead.phone || lead.email) && (
             <Card className="space-y-3 border-border/70 p-4">
               <div>
                 <h4 className="text-sm font-semibold text-foreground">Contato principal</h4>

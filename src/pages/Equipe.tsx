@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate } from "react-router-dom";
-import { Check, ChevronDown, Crown, Loader2, Pencil, ShieldCheck, Trash2, UserRoundCheck, X } from "lucide-react";
+import { Check, ChevronDown, Crown, KeyRound, Loader2, Pencil, ShieldCheck, Trash2, UserRoundCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -32,7 +32,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -52,6 +61,9 @@ export const TeamManagement = () => {
   const funnels = useFunnels(perms.canManageTeam);
   const qc = useQueryClient();
   const [pendingDeleteProfile, setPendingDeleteProfile] = useState<Profile | null>(null);
+  const [passwordResetTarget, setPasswordResetTarget] = useState<Profile | null>(null);
+  const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [temporaryPasswordConfirm, setTemporaryPasswordConfirm] = useState("");
 
   const allRoles = useQuery({
     queryKey: ["user_roles_all"],
@@ -164,6 +176,32 @@ export const TeamManagement = () => {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const resetCrmUserPassword = useMutation({
+    mutationFn: async ({ userId, password }: { userId: string; password: string }) => {
+      const trimmedPassword = password.trim();
+      if (trimmedPassword.length < 6) {
+        throw new Error("A senha temporaria precisa ter pelo menos 6 caracteres.");
+      }
+
+      if (trimmedPassword !== temporaryPasswordConfirm.trim()) {
+        throw new Error("As senhas informadas nao coincidem.");
+      }
+
+      return invokeLeadsApi<{ ok: true; user_id: string }>({
+        action: "reset_crm_user_password",
+        user_id: userId,
+        password: trimmedPassword,
+      });
+    },
+    onSuccess: () => {
+      setPasswordResetTarget(null);
+      setTemporaryPassword("");
+      setTemporaryPasswordConfirm("");
+      toast.success("Senha temporaria definida com sucesso.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   const rolesByUser = useMemo(() => {
     const order: Record<OperationalRole, number> = {
       admin: 1,
@@ -264,6 +302,7 @@ export const TeamManagement = () => {
                         || setStatus.isPending
                         || setFunnelScope.isPending
                         || updateProfile.isPending
+                        || resetCrmUserPassword.isPending
                         || deleteCrmUser.isPending
                       }
                       canDeleteUser={perms.isAdmin}
@@ -275,6 +314,7 @@ export const TeamManagement = () => {
                       onChangeFunnelScope={(hasAllFunnelAccess, funnelIds) =>
                         setFunnelScope.mutate({ userId: profile.id, hasAllFunnelAccess, funnelIds })
                       }
+                      onRequestPasswordReset={() => setPasswordResetTarget(profile)}
                       onRequestDelete={() => setPendingDeleteProfile(profile)}
                     />
                   );
@@ -312,6 +352,77 @@ export const TeamManagement = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={!!passwordResetTarget}
+        onOpenChange={(open) => {
+          if (open) return;
+          setPasswordResetTarget(null);
+          setTemporaryPassword("");
+          setTemporaryPasswordConfirm("");
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Definir senha temporaria</DialogTitle>
+            <DialogDescription>
+              {passwordResetTarget
+                ? `Defina uma senha temporaria para ${passwordResetTarget.full_name || passwordResetTarget.email || "esta conta"}. Depois envie essa senha por um canal seguro e peça para a pessoa trocá-la no primeiro acesso.`
+                : "Defina uma senha temporaria para a conta selecionada."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="temporary-password">Senha temporaria</Label>
+              <Input
+                id="temporary-password"
+                type="password"
+                value={temporaryPassword}
+                onChange={(event) => setTemporaryPassword(event.target.value)}
+                placeholder="Minimo 6 caracteres"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="temporary-password-confirm">Confirmar senha</Label>
+              <Input
+                id="temporary-password-confirm"
+                type="password"
+                value={temporaryPasswordConfirm}
+                onChange={(event) => setTemporaryPasswordConfirm(event.target.value)}
+                placeholder="Repita a senha temporaria"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPasswordResetTarget(null);
+                setTemporaryPassword("");
+                setTemporaryPasswordConfirm("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                if (!passwordResetTarget) return;
+                resetCrmUserPassword.mutate({
+                  userId: passwordResetTarget.id,
+                  password: temporaryPassword,
+                });
+              }}
+              disabled={resetCrmUserPassword.isPending}
+            >
+              {resetCrmUserPassword.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+              Salvar senha temporaria
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 };
@@ -331,6 +442,7 @@ const UserRow = ({
   onChangeRole,
   onChangeStatus,
   onChangeFunnelScope,
+  onRequestPasswordReset,
   onRequestDelete,
 }: {
   profile: Profile;
@@ -347,6 +459,7 @@ const UserRow = ({
   onChangeRole: (role: OperationalRole) => void;
   onChangeStatus: (status: Exclude<UserAccessStatus, "pending">) => void;
   onChangeFunnelScope: (hasAllFunnelAccess: boolean, funnelIds: string[]) => void;
+  onRequestPasswordReset: () => void;
   onRequestDelete: () => void;
 }) => {
   const [editing, setEditing] = useState(false);
@@ -506,6 +619,37 @@ const UserRow = ({
                   </Button>
                 </div>
                 <p className="truncate text-xs text-muted-foreground">{profile.email}</p>
+                {canDeleteTarget ? (
+                  <div className="mt-2">
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        disabled={isBusy}
+                        onClick={onRequestPasswordReset}
+                      >
+                        <KeyRound className="h-4 w-4" />
+                        Definir senha
+                      </Button>
+                    </div>
+                  </div>
+                ) : canManageTarget ? (
+                  <div className="mt-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8"
+                      disabled={isBusy}
+                      onClick={onRequestPasswordReset}
+                    >
+                      <KeyRound className="h-4 w-4" />
+                      Definir senha
+                    </Button>
+                  </div>
+                ) : null}
                 {canDeleteTarget ? (
                   <div className="mt-2">
                     <Button

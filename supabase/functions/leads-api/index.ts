@@ -159,6 +159,22 @@ const normalizeOptionalString = (value: unknown) => {
   return trimmed ? trimmed : null;
 };
 
+const normalizeSourceValue = (value: unknown) =>
+  (normalizeOptionalString(value) ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+const isReferralProgramLeadSource = (value: unknown) => {
+  const normalized = normalizeSourceValue(value);
+  return (
+    normalized === "valle indicacao" ||
+    normalized === "programa de indicacao" ||
+    normalized.startsWith("valle indicacao:") ||
+    normalized.startsWith("programa de indicacao:")
+  );
+};
+
 const normalizeEmail = (value: unknown) => {
   const normalized = normalizeOptionalString(value);
   return normalized ? normalized.toLowerCase() : null;
@@ -456,20 +472,44 @@ const attachTrackingCodes = async (leads: LeadRow[]) => {
     ),
   );
 
-  if (trackingLeadIds.length === 0) return leads;
-
-  const projectRows = await sql`
-    select current_tracking_lead_id::text as lead_id, tracking_code
-    from public.project_tracking_projects
-    where current_tracking_lead_id = any(${trackingLeadIds})
-  `;
-
-  const trackingCodeByLeadId = new Map(
-    projectRows.map((row) => [String(row.lead_id), (row.tracking_code as string | null) ?? null]),
+  const referralLeadIds = Array.from(
+    new Set(
+      leads
+        .filter((lead) => typeof lead.id === "string" && isReferralProgramLeadSource(lead.source))
+        .map((lead) => String(lead.id)),
+    ),
   );
 
+  if (trackingLeadIds.length === 0 && referralLeadIds.length === 0) return leads;
+
+  const trackingCodeByLeadId = new Map<string, string | null>();
+
+  if (trackingLeadIds.length > 0) {
+    const projectRows = await sql`
+      select current_tracking_lead_id::text as lead_id, tracking_code
+      from public.project_tracking_projects
+      where current_tracking_lead_id = any(${trackingLeadIds})
+    `;
+
+    for (const row of projectRows) {
+      trackingCodeByLeadId.set(String(row.lead_id), (row.tracking_code as string | null) ?? null);
+    }
+  }
+
+  if (referralLeadIds.length > 0) {
+    const referralRows = await sql`
+      select lead_id::text as lead_id, access_token
+      from public.referral_program_entries
+      where lead_id = any(${referralLeadIds})
+    `;
+
+    for (const row of referralRows) {
+      trackingCodeByLeadId.set(String(row.lead_id), (row.access_token as string | null) ?? null);
+    }
+  }
+
   return leads.map((lead) => (
-    (lead.entity_kind ?? "lead") === "customer_tracking"
+    ((lead.entity_kind ?? "lead") === "customer_tracking" || isReferralProgramLeadSource(lead.source))
       ? { ...lead, tracking_code: trackingCodeByLeadId.get(String(lead.id)) ?? null }
       : lead
   ));
@@ -2146,6 +2186,61 @@ serve(async (req) => {
       return json({
         ok: true,
         deleted_user_id: targetUserId,
+      });
+    }
+
+    if (action === "reset_crm_user_password") {
+      if (!flags.canManageAll) return fail("Sem permissao para redefinir senhas.", 403);
+
+      const targetUserId = normalizeOptionalString(body.user_id);
+      const nextPassword = normalizeOptionalString(body.password);
+
+      if (!targetUserId) return fail("Usuario nao informado.");
+      if (!nextPassword || nextPassword.length < 6) {
+        return fail("A nova senha precisa ter pelo menos 6 caracteres.", 400);
+      }
+
+      const [targetProfile] = await sql`
+        select
+          p.id::text as id,
+          p.email,
+          p.full_name
+        from public.profiles p
+        where p.id = ${targetUserId}
+        limit 1
+      `;
+
+      if (!targetProfile?.id) return fail("Usuario nao encontrado.", 404);
+
+      const normalizedTargetEmail = normalizeEmail(targetProfile.email);
+      if (normalizedTargetEmail === OWNER_EMAIL) {
+        return fail("A conta principal protegida nao pode ter a senha redefinida por este fluxo.", 403);
+      }
+
+      const targetRoleRows = await sql`
+        select role
+        from public.user_roles
+        where user_id = ${targetUserId}
+      `;
+
+      const targetRoles = targetRoleRows.map((row) => row.role as AppRole);
+      const targetFlags = roleFlags(targetRoles);
+
+      if (!flags.isAdmin && targetFlags.isAdmin) {
+        return fail("Somente administradores podem redefinir a senha de outra conta administradora.", 403);
+      }
+
+      const updateAuthResult = await authClient.auth.admin.updateUserById(targetUserId, {
+        password: nextPassword,
+      });
+
+      if (updateAuthResult.error) {
+        throw new Error(updateAuthResult.error.message);
+      }
+
+      return json({
+        ok: true,
+        user_id: targetUserId,
       });
     }
 

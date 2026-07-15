@@ -26,18 +26,24 @@ import { toast } from "sonner";
 import valleLogo from "@/assets/valle-logo-full.png";
 import referralTeamImage from "@/assets/valle-indicacao-team.jpg";
 
+const optionalTextField = z.string().trim();
+const optionalEmailField = z.string().trim().refine(
+  (value) => value === "" || z.string().email().safeParse(value).success,
+  "O e-mail da pessoa indicada está inválido.",
+);
+
 const formSchema = z.object({
   referrer_name: z.string().trim().min(2, "Informe seu nome."),
-  referrer_company: z.string().trim(),
+  referrer_company: optionalTextField,
   referrer_email: z.string().trim().email("Informe um e-mail válido."),
   referrer_phone: z.string().trim(),
-  referred_company_or_person: z.string().trim(),
+  referred_company_or_person: optionalTextField,
   referred_contact_name: z.string().trim().min(2, "Informe o nome do contato indicado."),
-  referred_email: z.string().trim(),
+  referred_email: optionalEmailField,
   referred_phone: z.string().trim(),
-  city: z.string().trim(),
-  uf: z.string().trim(),
-  notes: z.string().trim(),
+  city: optionalTextField,
+  uf: optionalTextField,
+  notes: optionalTextField,
   hp_field: z.string().trim().max(0, "Campo inválido."),
 });
 
@@ -212,12 +218,6 @@ const stepDotTone: Record<StatusStep["status"], string> = {
   upcoming: "bg-muted text-muted-foreground",
 };
 
-const rewardTone: Record<StatusResponse["reward"]["tone"], string> = {
-  neutral: "border-accent/25 bg-accent/5 text-foreground",
-  positive: "border-success/20 bg-success/5 text-foreground",
-  muted: "border-border/70 bg-secondary/40 text-foreground",
-};
-
 const referralTabs = [
   { key: "indicar", label: "Fazer indicação" },
   { key: "acompanhar", label: "Acompanhar indicação" },
@@ -225,6 +225,10 @@ const referralTabs = [
 
 const lightFieldClassName = "bg-white text-slate-900 caret-slate-900 placeholder:text-slate-500 [color-scheme:light] [&:-webkit-autofill]:[-webkit-text-fill-color:#0f172a] [&:-webkit-autofill]:shadow-[inset_0_0_0px_1000px_#fff]";
 const lightSelectTriggerClassName = "bg-white text-slate-900";
+const toOptionalValue = (value: string) => {
+  const trimmed = value.trim();
+  return trimmed || null;
+};
 
 const ReferralProgram = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -235,11 +239,13 @@ const ReferralProgram = () => {
   const [statusLoading, setStatusLoading] = useState(false);
   const [submitted, setSubmitted] = useState<SubmitResponse | null>(null);
   const [statusData, setStatusData] = useState<StatusResponse | null>(null);
+  const [shouldScrollToStatus, setShouldScrollToStatus] = useState(false);
 
   const trackingUrl = useMemo(() => {
-    if (!submitted?.tracking_token) return "";
-    return `${window.location.origin}/programa-indicacao?codigo=${submitted.tracking_token}`;
-  }, [submitted?.tracking_token]);
+    const trackingToken = submitted?.tracking_token ?? statusData?.tracking_token ?? "";
+    if (!trackingToken) return "";
+    return `${window.location.origin}/programa-indicacao?codigo=${trackingToken}`;
+  }, [statusData?.tracking_token, submitted?.tracking_token]);
 
   const utmContext = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -271,8 +277,30 @@ const ReferralProgram = () => {
     return () => window.clearInterval(intervalId);
   }, [statusCode]);
 
+  useEffect(() => {
+    if (!statusData || !shouldScrollToStatus) return;
+
+    window.requestAnimationFrame(() => {
+      scrollToSection("resultado-acompanhamento");
+      setShouldScrollToStatus(false);
+    });
+  }, [shouldScrollToStatus, statusData]);
+
   const scrollToSection = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const consultTrackingCode = (token: string) => {
+    const trimmed = token.trim();
+    if (!trimmed) return;
+    setShouldScrollToStatus(true);
+    setStatusCode(trimmed);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("codigo", trimmed);
+      return next;
+    });
+    void loadStatus(trimmed);
   };
 
   const patchForm = (patch: Partial<FormState>) => {
@@ -301,13 +329,6 @@ const ReferralProgram = () => {
 
     if (!isValidLeadPhone(form.referred_phone)) {
       toast.error("O telefone da pessoa indicada está inválido.");
-      return false;
-    }
-
-    const referredEmail = form.referred_email.trim();
-    const emailCheck = !referredEmail || z.string().email().safeParse(referredEmail).success;
-    if (!emailCheck) {
-      toast.error("O e-mail da pessoa indicada está inválido.");
       return false;
     }
 
@@ -362,22 +383,24 @@ const ReferralProgram = () => {
     if (!validateForm()) return;
 
     setLoading(true);
+    const referredContactName = form.referred_contact_name.trim();
+    const referredCompanyOrPerson = form.referred_company_or_person.trim() || referredContactName;
 
     const { data, error } = await supabase.functions.invoke("public-referral-program", {
       body: {
         action: "submit",
         referrer_name: form.referrer_name.trim(),
-        referrer_company: form.referrer_company.trim(),
+        referrer_company: toOptionalValue(form.referrer_company),
         referrer_email: form.referrer_email.trim(),
         referrer_phone: formatPhone(form.referrer_phone),
-        referred_company_or_person: form.referred_company_or_person.trim(),
-        referred_contact_name: form.referred_contact_name.trim(),
-        referred_email: form.referred_email.trim(),
+        referred_company_or_person: referredCompanyOrPerson,
+        referred_contact_name: referredContactName,
+        referred_email: toOptionalValue(form.referred_email),
         referred_phone: formatPhone(form.referred_phone),
-        city: form.city.trim(),
-        uf: form.uf || null,
+        city: toOptionalValue(form.city),
+        uf: toOptionalValue(form.uf),
         service_types: form.service_types,
-        notes: form.notes.trim(),
+        notes: toOptionalValue(form.notes),
         hp_field: form.hp_field,
         ...utmContext,
       },
@@ -569,7 +592,7 @@ const ReferralProgram = () => {
 
             <CardContent>
               {activeTab === "indicar" ? (
-                <form className="space-y-5" onSubmit={handleSubmit}>
+                <form className="space-y-5" onSubmit={handleSubmit} noValidate>
                   <div className="space-y-3 rounded-2xl border border-[#e3d8ce] bg-white p-4">
                     <div className="space-y-1">
                       <p className="text-sm font-semibold text-slate-900">Dados de quem está indicando</p>
@@ -786,16 +809,7 @@ const ReferralProgram = () => {
                         type="button"
                         variant="accent"
                         className="sm:min-w-36"
-                        onClick={() => {
-                          const trimmed = statusCode.trim();
-                          setSearchParams((current) => {
-                            const next = new URLSearchParams(current);
-                            if (trimmed) next.set("codigo", trimmed);
-                            else next.delete("codigo");
-                            return next;
-                          });
-                          void loadStatus(trimmed);
-                        }}
+                        onClick={() => consultTrackingCode(statusCode)}
                         disabled={statusLoading}
                       >
                         {statusLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
@@ -806,6 +820,27 @@ const ReferralProgram = () => {
                       O andamento é atualizado conforme a oportunidade avança no funil comercial da Valle.
                     </p>
                   </div>
+
+                  {statusData && trackingUrl ? (
+                    <div className="space-y-3 rounded-2xl border border-[#e5d7c8] bg-[#f8f5f1] p-4">
+                      <div className="rounded-2xl border border-white/80 bg-white px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Link de acesso
+                        </p>
+                        <p className="mt-1 break-all text-sm font-medium text-slate-900">{trackingUrl}</p>
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-auto w-full rounded-2xl bg-white px-4 py-3"
+                        onClick={() => handleCopy(trackingUrl, "Link copiado.")}
+                      >
+                        <Copy className="mr-2 h-4 w-4" />
+                        Copiar link
+                      </Button>
+                    </div>
+                  ) : null}
 
                   {submitted ? (
                     <Card className="border-success/25 bg-success/5">
@@ -823,8 +858,8 @@ const ReferralProgram = () => {
                           </div>
                         </div>
 
-                        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-                          <div className="rounded-2xl border border-success/20 bg-white px-4 py-3">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="hidden rounded-2xl border border-success/20 bg-white px-4 py-3">
                             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                               Código gerado
                             </p>
@@ -833,11 +868,20 @@ const ReferralProgram = () => {
                           <Button
                             type="button"
                             variant="outline"
-                            className="h-auto rounded-2xl px-4 py-3"
+                            className="h-auto rounded-2xl bg-white px-4 py-3"
                             onClick={() => handleCopy(submitted.tracking_token, "Código copiado.")}
                           >
                             <Copy className="mr-2 h-4 w-4" />
                             Copiar código
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="accent"
+                            className="h-auto rounded-2xl px-4 py-3 font-semibold"
+                            onClick={() => consultTrackingCode(submitted.tracking_token)}
+                          >
+                            <RefreshCcw className="mr-2 h-4 w-4" />
+                            Consultar
                           </Button>
                         </div>
 
@@ -885,15 +929,20 @@ const ReferralProgram = () => {
                   ) : null}
 
                   {statusData ? (
-                    <Card className="border-[#e5d7c8] bg-white">
+                    <Card id="resultado-acompanhamento" className="border-[#e5d7c8] bg-white">
                       <CardContent className="space-y-5 p-5">
                         <div className="flex flex-col gap-3 rounded-2xl bg-[linear-gradient(135deg,#2b3c46_0%,#3d505b_100%)] p-5 text-white">
-                          <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/65">
-                                Etapa atual
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/65">
+                                Cliente indicado
                               </p>
-                              <h3 className="mt-2 text-2xl font-bold">{statusData.current_stage.label}</h3>
+                              <h3 className="mt-2 text-2xl font-bold">{statusData.referred_company_or_person}</h3>
+                              {statusData.referrer_name ? (
+                                <p className="mt-2 text-sm text-white/72">
+                                  Indicado por: {statusData.referrer_name}
+                                </p>
+                              ) : null}
                             </div>
                             <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white">
                               <Sparkles className="h-3.5 w-3.5" />
@@ -901,16 +950,48 @@ const ReferralProgram = () => {
                             </span>
                           </div>
                           <p className="max-w-2xl text-sm leading-6 text-white/75">
-                            {statusData.current_stage.description}
+                            Recebemos a indicação e registramos o contato no funil da Valle.
                           </p>
                         </div>
 
-                        <div className={cn("rounded-2xl border p-4", rewardTone[statusData.reward.tone])}>
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                            Reconhecimento hipotético
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-slate-900">{statusData.reward.title}</p>
-                          <p className="mt-1 text-sm leading-6 text-slate-600">{statusData.reward.description}</p>
+                        <div className="hidden space-y-3 rounded-2xl border border-[#e5d7c8] bg-[#f8f5f1] p-4">
+                          <div className="grid gap-3 lg:grid-cols-2">
+                            <div className="rounded-2xl border border-white/80 bg-white px-4 py-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                Código de acesso
+                              </p>
+                              <p className="mt-1 break-all text-sm font-semibold text-slate-900">
+                                {statusData.tracking_token}
+                              </p>
+                            </div>
+                            <div className="rounded-2xl border border-white/80 bg-white px-4 py-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                Link de acesso
+                              </p>
+                              <p className="mt-1 break-all text-sm font-medium text-slate-900">{trackingUrl}</p>
+                            </div>
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-auto rounded-2xl bg-white px-4 py-3"
+                              onClick={() => handleCopy(statusData.tracking_token, "Código copiado.")}
+                            >
+                              <Copy className="mr-2 h-4 w-4" />
+                              Copiar código
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-auto rounded-2xl bg-white px-4 py-3"
+                              onClick={() => handleCopy(trackingUrl, "Link copiado.")}
+                            >
+                              <Copy className="mr-2 h-4 w-4" />
+                              Copiar link
+                            </Button>
+                          </div>
                         </div>
 
                         <div className="space-y-3">
