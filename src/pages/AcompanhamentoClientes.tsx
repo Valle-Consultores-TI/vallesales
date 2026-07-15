@@ -6,10 +6,9 @@ import { LeadDetailsSheet } from "@/components/crm/LeadDetailsSheet";
 import { LeadFormDialog } from "@/components/crm/LeadFormDialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { useFunnelAccessOptions } from "@/hooks/useFunnels";
 import { useArchiveLead, useDeleteLead, useLeads, useProfiles, useStages, useTransferCustomerTrackingFlow } from "@/hooks/useLeads";
 import { useAuth } from "@/hooks/useAuth";
-import { usePermissions } from "@/hooks/useUserRoles";
+import { useCustomerTrackingAccess } from "@/hooks/useCustomerTrackingAccess";
 import type { Funnel, Lead, TrackingFlowKey } from "@/types/crm";
 import {
   CUSTOMER_TRACKING_STORAGE_KEY,
@@ -20,8 +19,7 @@ import {
 
 const AcompanhamentoClientes = () => {
   const { user } = useAuth();
-  const perms = usePermissions();
-  const trackingFunnelsQuery = useFunnelAccessOptions(!!user, { module: "customer_tracking" });
+  const { perms, trackingFunnelsQuery, hasCustomerTrackingAccess } = useCustomerTrackingAccess(!!user);
   const profiles = useProfiles(!!user);
   const archiveLead = useArchiveLead();
   const deleteLead = useDeleteLead();
@@ -76,12 +74,9 @@ const AcompanhamentoClientes = () => {
   const leads = useLeads(activeTrackingFunnelId, trackingReady, {
     entityKind: "customer_tracking",
   });
+  const canOperateTrackingLead = hasCustomerTrackingAccess;
 
-  const canEditLead = (lead: Lead) => {
-    if (perms.canEditAnyLead) return true;
-    if (!perms.canEditOwnLead) return false;
-    return lead.owner_id === user?.id || lead.created_by === user?.id;
-  };
+  const canEditLead = (_lead: Lead) => canOperateTrackingLead;
 
   const openDetails = (lead: Lead) => {
     setSelectedLead(lead);
@@ -126,7 +121,7 @@ const AcompanhamentoClientes = () => {
   };
 
   const handleDeleteTrackingLead = async (lead: Lead) => {
-    if (!perms.canDeleteLead) return;
+    if (!canOperateTrackingLead) return;
 
     const shouldDelete = window.confirm(
       "Deseja excluir este cliente em acompanhamento permanentemente? Esta ação não pode ser desfeita.",
@@ -200,7 +195,7 @@ const AcompanhamentoClientes = () => {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {perms.canCreateLead && activeTrackingFunnelId && (
+            {canOperateTrackingLead && activeTrackingFunnelId && (
               <Button type="button" variant="accent" className="rounded-full" onClick={() => openNew()}>
                 <Plus className="mr-2 h-4 w-4" />
                 Novo cliente
@@ -281,7 +276,7 @@ const AcompanhamentoClientes = () => {
               onSelectLead={openDetails}
               onAddInStage={openNew}
               addEntityLabel="cliente"
-              canAddLead={perms.canCreateLead}
+              canAddLead={canOperateTrackingLead}
               canMoveLead={canEditLead}
               canRenameStages={canManageTrackingStages}
               canCreateStages={canManageTrackingStages}
@@ -295,7 +290,7 @@ const AcompanhamentoClientes = () => {
               wonDialogKeepLabel={flowKey === "opening_company" ? "Ir para Onboarding" : "Concluir fluxo"}
               showWonArchiveAction
               onArchiveLead={handleArchiveTrackingLead}
-              onDeleteLead={perms.canDeleteLead ? handleDeleteTrackingLead : undefined}
+              onDeleteLead={canOperateTrackingLead ? handleDeleteTrackingLead : undefined}
             />
           </div>
         )}
@@ -327,7 +322,7 @@ const AcompanhamentoClientes = () => {
         profiles={profiles.data ?? []}
         stages={stages.data ?? []}
         canEditLead={selectedLead ? canEditLead(selectedLead) : false}
-        canDeleteLead={perms.canDeleteLead}
+        canDeleteLead={canOperateTrackingLead}
         onEdit={() => {
           if (selectedLead) {
             setDetailsOpen(false);

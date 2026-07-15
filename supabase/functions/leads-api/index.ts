@@ -536,6 +536,8 @@ const roleFlags = (roles: AppRole[]) => {
   };
 };
 
+const isCustomerTrackingLead = (lead: Pick<LeadRow, "entity_kind">) => (lead.entity_kind ?? "lead") === "customer_tracking";
+
 type SessionContext = {
   userId: string;
   roles: AppRole[];
@@ -548,9 +550,13 @@ const userCanAccessFunnel = (ctx: SessionContext, funnelId: string | null | unde
   return ctx.hasAllFunnelAccess || ctx.accessibleFunnelIds.includes(funnelId);
 };
 
+const canOperateCustomerTracking = (ctx: SessionContext, funnelId: string | null | undefined) =>
+  userCanAccessFunnel(ctx, funnelId);
+
 const canAccessLead = (lead: LeadRow, ctx: SessionContext) => {
   const flags = roleFlags(ctx.roles);
   if (!userCanAccessFunnel(ctx, lead.funnel_id)) return false;
+  if (isCustomerTrackingLead(lead)) return true;
   if (flags.canReadAll) return true;
   if (flags.isConsultor) return lead.owner_id === ctx.userId || lead.created_by === ctx.userId;
   return false;
@@ -559,6 +565,7 @@ const canAccessLead = (lead: LeadRow, ctx: SessionContext) => {
 const canEditLeadRecord = (lead: LeadRow, ctx: SessionContext) => {
   const flags = roleFlags(ctx.roles);
   if (!userCanAccessFunnel(ctx, lead.funnel_id)) return false;
+  if (isCustomerTrackingLead(lead)) return true;
   if (flags.canManageAll) return true;
   if (flags.isConsultor) return lead.owner_id === ctx.userId || lead.created_by === ctx.userId;
   return false;
@@ -607,9 +614,6 @@ const getSessionContext = async (req: Request) => {
       and role in ('admin', 'gestor', 'consultor', 'visualizador')
   `;
   const roles = roleRows.map((row) => row.role as AppRole);
-  if (!roles.length) {
-    throw new Response("Seu acesso operacional ainda nao foi configurado.", { status: 403 });
-  }
 
   const hasAllFunnelAccess = profile?.has_all_funnel_access !== false;
   const accessibleFunnelIds = hasAllFunnelAccess
@@ -1096,6 +1100,7 @@ serve(async (req) => {
         assertFunnelAccess(session, requestedFunnelId);
       }
 
+      const shouldListTrackingLeads = entitySelection === "customer_tracking";
       const rows = flags.canReadAll
         ? archivedSelection === "archived"
           ? await sql`select * from public.leads order by archived_at desc nulls last, updated_at desc`
@@ -1114,6 +1119,20 @@ serve(async (req) => {
                 where owner_id = ${userId} or created_by = ${userId}
                 order by position asc, created_at desc
               `
+          : shouldListTrackingLeads
+            ? archivedSelection === "archived"
+              ? await sql`
+                  select *
+                  from public.leads
+                  where entity_kind = 'customer_tracking'
+                  order by archived_at desc nulls last, updated_at desc
+                `
+              : await sql`
+                  select *
+                  from public.leads
+                  where entity_kind = 'customer_tracking'
+                  order by position asc, created_at desc
+                `
           : [];
       const activeTrackingSourceLeadIds = new Set(
         rows
@@ -1604,7 +1623,6 @@ serve(async (req) => {
     }
 
     if (action === "create") {
-      if (!flags.canCreate) return fail("Sem permissao para criar leads.", 403);
       const lead = prepareLeadPayload(cleanLeadPayload(body.lead));
       assertFunnelAccess(session, lead.funnel_id as string | null | undefined);
       await assertStageBelongsToFunnel(lead.stage_id, lead.funnel_id);
@@ -1613,6 +1631,8 @@ serve(async (req) => {
         return fail("Funil informado nao encontrado.", 400);
       }
       const entityKind: LeadEntityKind = targetFunnel.module === "customer_tracking" ? "customer_tracking" : "lead";
+      const canCreateTrackingLead = entityKind === "customer_tracking" && canOperateCustomerTracking(session, targetFunnel.id);
+      if (!flags.canCreate && !canCreateTrackingLead) return fail("Sem permissao para criar leads.", 403);
       const trackingFlowKey = entityKind === "customer_tracking"
         ? normalizeTrackingFlowKey(targetFunnel.tracking_flow_key)
         : null;
@@ -2108,12 +2128,14 @@ serve(async (req) => {
     }
 
     if (action === "delete") {
-      if (!flags.canManageAll) return fail("Sem permissao para excluir leads.", 403);
       const id = body.id as string | undefined;
       if (!id) return fail("Lead nao informado.");
       const [lead] = await sql`select * from public.leads where id = ${id} limit 1`;
       if (!lead) return fail("Lead nao encontrado.", 404);
       if (!canAccessLead(lead, session)) return fail("Sem permissao para excluir este lead.", 403);
+      const canDeleteTrackingLead =
+        isCustomerTrackingLead(lead as LeadRow) && canOperateCustomerTracking(session, lead.funnel_id as string | null | undefined);
+      if (!flags.canManageAll && !canDeleteTrackingLead) return fail("Sem permissao para excluir leads.", 403);
       if ((lead.entity_kind ?? "lead") === "lead") {
         await sql`
           delete from public.leads

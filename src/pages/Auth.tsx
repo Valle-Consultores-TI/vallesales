@@ -6,7 +6,7 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { recordClientPortalLogin } from "@/hooks/useClientPortal";
-import { usePermissions } from "@/hooks/useUserRoles";
+import { useCustomerTrackingAccess } from "@/hooks/useCustomerTrackingAccess";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -87,7 +87,9 @@ export default function Auth() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, loading: authLoading } = useAuth();
-  const perms = usePermissions();
+  const { perms, hasCustomerTrackingAccess, isLoading: accessLoading } = useCustomerTrackingAccess(
+    !!user && !location.pathname.startsWith("/cliente"),
+  );
   const [loading, setLoading] = useState(false);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRecoveryPassword, setShowRecoveryPassword] = useState(false);
@@ -185,7 +187,7 @@ export default function Auth() {
 
   useEffect(() => {
     if (recoveryMode) return;
-    if (authLoading || !user || perms.isLoading) return;
+    if (authLoading || !user || accessLoading) return;
 
     if (isClientPortal) {
       if (perms.canAccessClientPortal) {
@@ -199,6 +201,16 @@ export default function Auth() {
       return;
     }
 
+    if (perms.canAccessApp) {
+      navigate("/", { replace: true });
+      return;
+    }
+
+    if (hasCustomerTrackingAccess) {
+      navigate("/acompanhamento", { replace: true });
+      return;
+    }
+
     if (perms.canAccessClientPortal && !perms.canAccessApp) {
       navigate(`/cliente/${user.id}`, { replace: true });
       return;
@@ -207,11 +219,12 @@ export default function Auth() {
     navigate("/", { replace: true });
   }, [
     authLoading,
+    accessLoading,
+    hasCustomerTrackingAccess,
     isClientPortal,
     navigate,
     perms.canAccessApp,
     perms.canAccessClientPortal,
-    perms.isLoading,
     recoveryMode,
     user,
   ]);
