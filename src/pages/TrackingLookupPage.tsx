@@ -189,7 +189,7 @@ const TrackingLookupPage = () => {
 
                 <div className="space-y-5">
                   <h1 className="max-w-[14ch] text-[clamp(2.75rem,7vw,4rem)] font-bold leading-[0.94] tracking-[-0.04em] text-white [text-wrap:balance] lg:max-w-[10ch]">
-                    Acompanhe seu projeto
+                    Acompanhe o processo
                   </h1>
                   <p className="max-w-xl text-base leading-7 text-white/76 sm:text-lg">
                     {"Consulte o andamento do seu processo com o código enviado pela nossa equipe."}
