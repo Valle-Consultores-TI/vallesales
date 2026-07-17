@@ -683,17 +683,6 @@ const getOwnerName = async (ownerId: string | null) => {
   return owner?.name || "sem responsavel";
 };
 
-const getStageName = async (stageId: string | null) => {
-  if (!stageId) return "?";
-  const [stage] = await sql`
-    select name
-    from public.pipeline_stages
-    where id = ${stageId}
-    limit 1
-  `;
-  return stage?.name || "?";
-};
-
 const getStageSnapshot = async (stageId: string | null | undefined) => {
   if (!stageId) return null;
   const [stage] = await sql`
@@ -1741,19 +1730,6 @@ serve(async (req) => {
         `update public.leads set ${setSql} where id = $${entries.length + 1} returning *`,
         [...values, id],
       );
-
-      if (Object.prototype.hasOwnProperty.call(updates, "stage_id") && updated.stage_id !== current.stage_id) {
-        const oldStage = await getStageName(current.stage_id);
-        const newStage = await getStageName(updated.stage_id);
-        const leadLabel = updated.company_or_person ?? updated.contact_name ?? "Lead";
-        await logActivity(
-          id,
-          "stage_change",
-          `${leadLabel}: etapa alterada de "${oldStage}" para "${newStage}"`,
-          userId,
-          { from: current.stage_id, to: updated.stage_id },
-        );
-      }
 
       if (Object.prototype.hasOwnProperty.call(updates, "owner_id") && updated.owner_id !== current.owner_id) {
         const oldOwner = await getOwnerName(current.owner_id);

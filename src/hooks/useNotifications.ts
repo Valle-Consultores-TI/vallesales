@@ -10,6 +10,7 @@ import {
   ACTIVITY_NOTIFICATION_PREFERENCES,
   ACTIVITY_NOTIFICATION_TITLES,
   NOTIFICATION_OPTIONS,
+  dedupeNotificationActivities,
   normalizeNotificationPreferences,
   type LeadActivityType,
   type NotificationPreferenceKey,
@@ -22,7 +23,7 @@ type UserNotificationRow = Pick<
   "id" | "kind" | "title" | "message" | "href" | "metadata" | "created_at" | "read_at"
 >;
 type NotificationFeed = {
-  activities: Pick<LeadActivity, "id" | "lead_id" | "type" | "description" | "created_at" | "created_by">[];
+  activities: Pick<LeadActivity, "id" | "lead_id" | "type" | "description" | "created_at" | "created_by" | "metadata">[];
   leads: NotificationLeadSummary[];
   userNotifications: UserNotificationRow[];
 };
@@ -108,7 +109,7 @@ export const useNotifications = () => {
       ] = await Promise.all([
         supabase
           .from("lead_activities")
-          .select("id, lead_id, type, description, created_at, created_by")
+          .select("id, lead_id, type, description, created_at, created_by, metadata")
           .order("created_at", { ascending: false })
           .limit(MAX_NOTIFICATIONS),
         supabase
@@ -181,7 +182,11 @@ export const useNotifications = () => {
     const funnelsById = new Map(funnels.map((funnel) => [funnel.id, funnel.name]));
     const leadsById = new Map((feedQuery.data?.leads ?? []).map((lead) => [lead.id, lead]));
 
-    const activityNotifications = (feedQuery.data?.activities ?? [])
+    const activityNotifications = dedupeNotificationActivities(
+      [...(feedQuery.data?.activities ?? [])].sort(
+        (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
+      ),
+    )
       .flatMap((activity) => {
         const category = ACTIVITY_NOTIFICATION_PREFERENCES[activity.type];
         if (!category || !preferences[category]) return [];

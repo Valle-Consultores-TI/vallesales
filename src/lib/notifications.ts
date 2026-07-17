@@ -71,6 +71,51 @@ export const ACTIVITY_NOTIFICATION_TITLES: Partial<Record<LeadActivityType, stri
   attachment_added: "Novo anexo",
 };
 
+type NotificationActivity = {
+  id: string;
+  lead_id: string;
+  type: LeadActivityType;
+  created_at: string;
+  metadata?: Database["public"]["Tables"]["lead_activities"]["Row"]["metadata"] | null;
+};
+
+const STAGE_CHANGE_DUPLICATE_WINDOW_MS = 5_000;
+
+const extractStageTransitionKey = (activity: NotificationActivity) => {
+  if (activity.type !== "stage_change") return null;
+  if (!activity.metadata || typeof activity.metadata !== "object" || Array.isArray(activity.metadata)) return null;
+
+  const metadata = activity.metadata as Record<string, unknown>;
+  const fromStageId = typeof metadata.from === "string" ? metadata.from : null;
+  const toStageId = typeof metadata.to === "string" ? metadata.to : null;
+
+  if (!fromStageId || !toStageId) return null;
+  return `${activity.lead_id}:${fromStageId}:${toStageId}`;
+};
+
+export const dedupeNotificationActivities = <T extends NotificationActivity>(activities: T[]): T[] => {
+  const stageChangeTimestamps = new Map<string, number[]>();
+
+  return activities.filter((activity) => {
+    const dedupeKey = extractStageTransitionKey(activity);
+    if (!dedupeKey) return true;
+
+    const createdAtMs = new Date(activity.created_at).getTime();
+    if (!Number.isFinite(createdAtMs)) return true;
+
+    const previousTimestamps = stageChangeTimestamps.get(dedupeKey) ?? [];
+    const isDuplicate = previousTimestamps.some((timestamp) =>
+      Math.abs(timestamp - createdAtMs) <= STAGE_CHANGE_DUPLICATE_WINDOW_MS,
+    );
+
+    if (isDuplicate) return false;
+
+    previousTimestamps.push(createdAtMs);
+    stageChangeTimestamps.set(dedupeKey, previousTimestamps);
+    return true;
+  });
+};
+
 export const normalizeNotificationPreferences = (
   value: Profile["notification_preferences"] | null,
 ): NotificationPreferences => {
