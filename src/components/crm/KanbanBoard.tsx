@@ -533,7 +533,9 @@ export const KanbanBoard = ({
                         ) : (
                           <>
                             <div className="min-w-0 flex-1">
-                              <h3 className="truncate text-[13px] font-semibold uppercase tracking-wide text-foreground">{stage.name}</h3>
+                              <h3 className="text-[13px] font-semibold uppercase tracking-wide leading-tight text-foreground break-words">
+                                {stage.name}
+                              </h3>
                             </div>
                             <span className="shrink-0 rounded-full border border-border/60 bg-background px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
                               {stageLeads.length}
@@ -609,7 +611,7 @@ export const KanbanBoard = ({
                       <p className="text-[11px] font-semibold tabular-nums text-foreground/80">
                         {formatCurrency(total)}
                       </p>
-                      {conversion !== null && (
+                      {false && conversion !== null && (
                         <span
                           title={`Conversão a partir de "${prevStage?.name}" (${stageLeads.length}/${prevCount})`}
                           className={cn(

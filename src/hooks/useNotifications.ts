@@ -17,7 +17,10 @@ import {
 } from "@/lib/notifications";
 import type { Lead, LeadActivity } from "@/types/crm";
 
-type NotificationLeadSummary = Pick<Lead, "id" | "company_or_person" | "contact_name" | "funnel_id" | "is_archived">;
+type NotificationLeadSummary = Pick<
+  Lead,
+  "id" | "company_or_person" | "contact_name" | "funnel_id" | "is_archived" | "entity_kind"
+>;
 type UserNotificationRow = Pick<
   Database["public"]["Tables"]["user_notifications"]["Row"],
   "id" | "kind" | "title" | "message" | "href" | "metadata" | "created_at" | "read_at"
@@ -60,7 +63,13 @@ const buildNotificationHref = (lead: NotificationLeadSummary) => {
     funnelId: lead.funnel_id,
   });
 
-  return `${lead.is_archived ? "/arquivados" : "/"}?${params.toString()}`;
+  const basePath = lead.is_archived
+    ? "/arquivados"
+    : lead.entity_kind === "customer_tracking"
+      ? "/acompanhamento"
+      : "/";
+
+  return `${basePath}?${params.toString()}`;
 };
 
 const buildNotificationDescription = ({
@@ -133,7 +142,7 @@ export const useNotifications = () => {
 
       const { data: leads, error: leadsError } = await supabase
         .from("leads")
-        .select("id, company_or_person, contact_name, funnel_id, is_archived")
+        .select("id, company_or_person, contact_name, funnel_id, is_archived, entity_kind")
         .in("id", leadIds);
       if (leadsError) throw leadsError;
 

@@ -6,7 +6,7 @@ import { Loader2, ShieldCheck, Sparkles, Waypoints } from "lucide-react";
 import { ProjectTrackingPanel } from "@/components/tracking/ProjectTrackingPanel";
 import { TrackingLookupForm } from "@/components/tracking/TrackingLookupForm";
 import { Card, CardContent } from "@/components/ui/card";
-import valleLogo from "@/assets/valle-logo-full.png";
+import valleLogo from "@/assets/valle-logo-consultores-cropped.png";
 import { supabase } from "@/integrations/supabase/client";
 import {
   GENERIC_TRACKING_LOOKUP_ERROR,
@@ -180,11 +180,12 @@ const TrackingLookupPage = () => {
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.9fr)] lg:gap-8 xl:gap-10">
             <div className="flex h-full flex-col gap-8 lg:justify-between">
               <div className="space-y-7">
-                <div className="inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/10 px-4 py-2 shadow-sm backdrop-blur">
-                  <img src={valleLogo} alt="Valle Consultores" className="h-7 w-auto object-contain" />
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/80">
-                    VALLE | Consultores
-                  </span>
+                <div className="flex">
+                  <img
+                    src={valleLogo}
+                    alt="Valle Consultores"
+                    className="h-auto w-[11rem] object-contain sm:w-[13rem] lg:w-[14.5rem]"
+                  />
                 </div>
 
                 <div className="space-y-5">

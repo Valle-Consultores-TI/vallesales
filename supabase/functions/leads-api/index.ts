@@ -545,6 +545,13 @@ type SessionContext = {
   accessibleFunnelIds: string[];
 };
 
+const loadAccessibleFunnelIds = async (userId: string) =>
+  (await sql`
+    select f.id::text as funnel_id
+    from public.funnels f
+    where public.user_has_funnel_access(${userId}, f.id)
+  `).map((row) => row.funnel_id as string);
+
 const userCanAccessFunnel = (ctx: SessionContext, funnelId: string | null | undefined) => {
   if (!funnelId) return false;
   return ctx.hasAllFunnelAccess || ctx.accessibleFunnelIds.includes(funnelId);
@@ -618,11 +625,7 @@ const getSessionContext = async (req: Request) => {
   const hasAllFunnelAccess = profile?.has_all_funnel_access !== false;
   const accessibleFunnelIds = hasAllFunnelAccess
     ? []
-    : (await sql`
-        select funnel_id::text as funnel_id
-        from public.user_funnel_access
-        where user_id = ${userId}
-      `).map((row) => row.funnel_id as string);
+    : await loadAccessibleFunnelIds(userId);
 
   return { userId, roles, hasAllFunnelAccess, accessibleFunnelIds };
 };
