@@ -25,6 +25,7 @@ import PublicLeadForm from "./pages/PublicLeadForm.tsx";
 import PublicCwkForm from "./pages/PublicCwkForm.tsx";
 import ReferralProgram from "./pages/ReferralProgram.tsx";
 import TrackingLookupPage from "./pages/TrackingLookupPage.tsx";
+import EKontrollDashboard from "./pages/EKontrollDashboard.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient({
@@ -79,6 +80,7 @@ const App = () => (
                   <Route path="/contatos" element={<ProtectedRoute><Contacts /></ProtectedRoute>} />
                   <Route path="/arquivados" element={<ProtectedRoute><ArchivedLeads /></ProtectedRoute>} />
                   <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                  <Route path="/ekontroll" element={<ProtectedRoute><EKontrollDashboard /></ProtectedRoute>} />
                   <Route path="/acompanhamento" element={<ProtectedRoute><AcompanhamentoClientes /></ProtectedRoute>} />
                   <Route path="/configuracoes" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />
                   <Route path="/configuracoes/aparencia" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />
