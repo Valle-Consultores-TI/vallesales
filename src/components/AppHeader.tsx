@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Archive, Briefcase, ContactRound, Kanban, LayoutDashboard, LogOut, Settings } from "lucide-react";
+import { Archive, BarChart3, Briefcase, ContactRound, Kanban, LayoutDashboard, LogOut, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { useAuth } from "@/hooks/useAuth";
@@ -7,7 +7,7 @@ import { useCustomerTrackingAccess } from "@/hooks/useCustomerTrackingAccess";
 import { cn } from "@/lib/utils";
 import valleSymbolWhite from "@/assets/valle-symbol-white.png";
 
-type AppHeaderSection = "funil" | "contatos" | "arquivados" | "dashboard" | "acompanhamento" | "configuracoes";
+type AppHeaderSection = "funil" | "contatos" | "arquivados" | "dashboard" | "ekontroll" | "acompanhamento" | "configuracoes";
 
 export const AppHeader = ({ active }: { active: AppHeaderSection }) => {
   const { signOut, user } = useAuth();
@@ -56,6 +56,14 @@ export const AppHeader = ({ active }: { active: AppHeaderSection }) => {
               <Button variant="ghost" size="sm" className={navClass("dashboard")}>
                 <LayoutDashboard className="h-4 w-4 md:mr-1.5" />
                 <span className="hidden md:inline">Resumo</span>
+              </Button>
+            </Link>
+          ) : null}
+          {perms.canAccessApp ? (
+            <Link to="/ekontroll">
+              <Button variant="ghost" size="sm" className={navClass("ekontroll")}>
+                <BarChart3 className="h-4 w-4 md:mr-1.5" />
+                <span className="hidden md:inline">e-KONTROLL</span>
               </Button>
             </Link>
           ) : null}
